@@ -1,11 +1,12 @@
 import os
+import time
 
 import anthropic
 
 client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 
-VALID_CATEGORIES = {"핵/봇", "업데이트", "시세/거래", "여론"}
-DEFAULT_CATEGORY = "여론"
+VALID_CATEGORIES = {"핵/봇", "업데이트", "시세/거래", "운영 비판", "커뮤니티"}
+DEFAULT_CATEGORY = "커뮤니티"
 
 
 def _classify(title: str, content: str) -> str:
@@ -23,19 +24,23 @@ def _classify(title: str, content: str) -> str:
 아래 게시글을 읽고 4개 카테고리 중 하나로 분류하세요.
 
 카테고리:
-- 핵/봇: 불법 프로그램, 자동사냥봇, 매크로, 치트툴 관련
-- 업데이트: 패치, 밸런스 변경, 버그 수정, 신규 콘텐츠 관련
-- 시세/거래: 게임 내 재화 시세, 거래소, 작업장 관련
-- 여론: 유저 이탈, 게임 평가, 운영사 비판, 커뮤니티 감정
+- 핵/봇: 불법 프로그램·자동사냥봇·매크로·치트툴 사용·유포·제보
+- 업데이트: 운영사가 배포한 패치·밸런스 변경·버그 수정·신규 콘텐츠에 대한 반응. "이번 패치", "업데이트 이후", "롤백" 등 운영사 행동 언급이 있어야 함
+- 시세/거래: 게임 내 재화(뎅·아덴 등) 시세 변동·거래소·작업장·아이템 거래 이슈. 단순 아이템 질문 제외
+- 운영 비판: 운영사(NC) 정책·행태·서비스 비판, 유저 이탈·게임 존폐 우려, 고객지원 불만, 과금 정책 비판
+- 커뮤니티: 위 4개에 해당하지 않는 모든 것. 게임플레이 질문·공략·잡담·자랑·일반 감상
+
+판단 순서: 핵/봇 → 업데이트 → 시세/거래 → 운영 비판 → 커뮤니티 순으로 확인.
 
 제목: {title}
 본문: {content_preview}
 
-카테고리 이름만 반환하세요. (핵/봇, 업데이트, 시세/거래, 여론 중 하나)"""
+카테고리 이름만 반환하세요. (핵/봇, 업데이트, 시세/거래, 운영 비판, 커뮤니티 중 하나)"""
                 }
             ],
         )
 
+        time.sleep(0.3)
         result = message.content[0].text.strip()
 
         if result not in VALID_CATEGORIES:
