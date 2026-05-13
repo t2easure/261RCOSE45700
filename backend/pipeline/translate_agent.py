@@ -1,6 +1,8 @@
 import anthropic
 import os
 import json
+import re
+import time
 
 client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 
@@ -29,8 +31,12 @@ def _translate(title: str, content: str) -> dict:
             ]
         )
 
+        time.sleep(0.3)
         result_text = message.content[0].text.strip()
-        result = json.loads(result_text)
+        match = re.search(r'\{.*\}', result_text, re.DOTALL)
+        if not match:
+            raise ValueError(f"JSON을 찾을 수 없음: {result_text[:100]}")
+        result = json.loads(match.group())
         return {
             "translated_title": result.get("translated_title", title),
             "translated_content": result.get("translated_content", content)
@@ -38,6 +44,10 @@ def _translate(title: str, content: str) -> dict:
 
     except Exception as e:
         print(f"[Translate] API 오류 - 원본 반환: {e}")
+        try:
+            print(f"[Translate] 응답 내용: {result_text[:200]}")
+        except:
+            pass
         return {
             "translated_title": title,
             "translated_content": content
