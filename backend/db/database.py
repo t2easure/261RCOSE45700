@@ -85,7 +85,136 @@ def init_db() -> None:
                 )
                 """
             )
+            cur.execute("CREATE EXTENSION IF NOT EXISTS vector")
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS fashion_posts (
+                    id SERIAL PRIMARY KEY,
+                    source VARCHAR(20),
+                    account_name VARCHAR(100),
+                    post_url TEXT UNIQUE,
+                    image_url TEXT,
+                    caption TEXT,
+                    likes INTEGER,
+                    posted_at TIMESTAMP,
+                    collected_at TIMESTAMP DEFAULT NOW(),
+                    caption_ai TEXT,
+                    captioned_at TIMESTAMP,
+                    embedding vector(384)
+                )
+                """
+            )
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS fashion_reports (
+                    id SERIAL PRIMARY KEY,
+                    created_at TIMESTAMP DEFAULT NOW(),
+                    period_start TEXT,
+                    period_end TEXT,
+                    summary TEXT,
+                    top_keywords TEXT,
+                    style_trends TEXT,
+                    brand_comparison TEXT,
+                    full_report TEXT,
+                    post_count INTEGER,
+                    source_accounts TEXT
+                )
+                """
+            )
         conn.commit()
+
+
+def save_fashion_posts(items: list[dict]) -> int:
+    """패션 포스팅 저장. 중복 post_url은 skip. 저장된 건수 반환."""
+    if not items:
+        return 0
+
+    inserted = 0
+    with _get_connection() as conn:
+        with conn.cursor() as cur:
+            for item in items:
+                cur.execute(
+                    """
+                    INSERT INTO fashion_posts
+                        (source, account_name, post_url, image_url, caption, likes, posted_at)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (post_url) DO NOTHING
+                    """,
+                    (
+                        item.get("source"),
+                        item.get("account_name"),
+                        item.get("post_url"),
+                        item.get("image_url"),
+                        item.get("caption"),
+                        item.get("likes"),
+                        item.get("posted_at"),
+                    ),
+                )
+                if cur.rowcount > 0:
+                    inserted += 1
+        conn.commit()
+    return inserted
+
+
+def get_uncaptioned_posts(limit: int = 100) -> list[dict]:
+    """caption_ai 없는 패션 포스팅 조회."""
+    with _get_connection() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                """
+                SELECT id, image_url, account_name, source
+                FROM fashion_posts
+                WHERE caption_ai IS NULL AND image_url IS NOT NULL
+                LIMIT %s
+                """,
+                (limit,),
+            )
+            return [dict(row) for row in cur.fetchall()]
+
+
+def save_caption(post_id: int, caption_ai: str) -> None:
+    """AI 캡션 저장."""
+    with _get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE fashion_posts
+                SET caption_ai = %s, captioned_at = NOW()
+                WHERE id = %s
+                """,
+                (caption_ai, post_id),
+            )
+        conn.commit()
+
+
+def save_embedding(post_id: int, embedding: list[float]) -> None:
+    """임베딩 벡터 저장."""
+    with _get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE fashion_posts SET embedding = %s WHERE id = %s",
+                (embedding, post_id),
+            )
+        conn.commit()
+
+
+def search_fashion_posts(query_embedding: list[float], days: int = 60, limit: int = 20) -> list[dict]:
+    """벡터 유사도 기반 패션 이미지 검색."""
+    with _get_connection() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                """
+                SELECT id, image_url, account_name, source, posted_at, caption_ai,
+                       1 - (embedding <=> %s::vector) AS similarity
+                FROM fashion_posts
+                WHERE posted_at >= NOW() - INTERVAL '%s days'
+                  AND embedding IS NOT NULL
+                ORDER BY embedding <=> %s::vector
+                LIMIT %s
+                """,
+                (query_embedding, days, query_embedding, limit),
+            )
+            return [dict(row) for row in cur.fetchall()]
 
 
 def save_posts(items: list[dict]) -> int:

@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from db.database import init_db
-from api.routers import posts, stats, crawl, reports
+from api.routers import search, fashion_reports
 
 app = FastAPI(title="CRAI API")
 
@@ -23,7 +23,5 @@ def startup():
     init_db()
 
 
-app.include_router(posts.router)
-app.include_router(stats.router)
-app.include_router(crawl.router)
-app.include_router(reports.router)
+app.include_router(search.router)
+app.include_router(fashion_reports.router)
