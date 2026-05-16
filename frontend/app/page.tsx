@@ -6,13 +6,16 @@ import SearchBar from '@/components/SearchBar'
 import ImageCard from '@/components/ImageCard'
 import CrawlButton from '@/components/CrawlButton'
 
-interface SearchResult {
+interface Post {
   id: number
   image_url: string
   account_name: string
   source: string
   posted_at: string | null
   caption_ai: string | null
+}
+
+interface SearchResult extends Post {
   similarity: number
 }
 
@@ -29,24 +32,47 @@ interface FashionReport {
 interface Stats {
   total: number
   bySource: Record<string, number>
-  lastRun: string
+  lastRun: string | null
 }
 
 export default function Home() {
   const [tab, setTab] = useState<Tab>('dashboard')
+
+  // 검색
   const [searchResults, setSearchResults] = useState<SearchResult[]>([])
   const [searchLoading, setSearchLoading] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
+
+  // 리포트
   const [reports, setReports] = useState<FashionReport[]>([])
   const [reportsLoading, setReportsLoading] = useState(false)
   const [selectedReport, setSelectedReport] = useState<FashionReport | null>(null)
   const [reportGenerating, setReportGenerating] = useState(false)
+
+  // 통계
   const [stats, setStats] = useState<Stats | null>(null)
+
+  // 대시보드 최신 이미지
+  const [recentPosts, setRecentPosts] = useState<Post[]>([])
+
+  // 데이터 탭
+  const [allPosts, setAllPosts] = useState<Post[]>([])
+  const [allPostsLoading, setAllPostsLoading] = useState(false)
+  const [dataSource, setDataSource] = useState<'all' | 'instagram' | 'lookbook'>('all')
+  const [dataOffset, setDataOffset] = useState(0)
+  const DATA_LIMIT = 40
 
   const fetchStats = useCallback(async () => {
     try {
       const res = await fetch('/api/stats')
       if (res.ok) setStats(await res.json())
+    } catch {}
+  }, [])
+
+  const fetchRecentPosts = useCallback(async () => {
+    try {
+      const res = await fetch('/api/posts?limit=12')
+      if (res.ok) setRecentPosts(await res.json())
     } catch {}
   }, [])
 
@@ -58,8 +84,24 @@ export default function Home() {
     } catch {} finally { setReportsLoading(false) }
   }, [])
 
-  useEffect(() => { fetchStats() }, [fetchStats])
+  const fetchAllPosts = useCallback(async (source: string, offset: number, append = false) => {
+    setAllPostsLoading(true)
+    try {
+      const params = new URLSearchParams({ limit: String(DATA_LIMIT), offset: String(offset) })
+      if (source !== 'all') params.set('source', source)
+      const res = await fetch(`/api/posts?${params}`)
+      if (res.ok) {
+        const data: Post[] = await res.json()
+        setAllPosts(prev => append ? [...prev, ...data] : data)
+      }
+    } catch {} finally { setAllPostsLoading(false) }
+  }, [])
+
+  useEffect(() => { fetchStats(); fetchRecentPosts() }, [fetchStats, fetchRecentPosts])
   useEffect(() => { if (tab === 'reports') fetchReports() }, [tab, fetchReports])
+  useEffect(() => {
+    if (tab === 'data') { setDataOffset(0); fetchAllPosts(dataSource, 0) }
+  }, [tab, dataSource, fetchAllPosts])
 
   async function handleSearch(query: string, days: number) {
     setSearchLoading(true)
@@ -82,6 +124,12 @@ export default function Home() {
     } catch { setReportGenerating(false) }
   }
 
+  function handleLoadMore() {
+    const next = dataOffset + DATA_LIMIT
+    setDataOffset(next)
+    fetchAllPosts(dataSource, next, true)
+  }
+
   function formatDate(iso: string) {
     try { return new Date(iso).toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' }) }
     catch { return iso }
@@ -98,59 +146,69 @@ export default function Home() {
           <section className="relative overflow-hidden bg-brown-700 text-cream-50">
             <div className="mx-auto max-w-7xl px-8 py-20">
               <p className="mb-3 text-xs font-medium tracking-[0.3em] text-brown-200 uppercase">
-                Fashion Intelligence Platform
+                AI Fashion Intelligence · 20대 여성 트렌드
               </p>
               <h1 className="font-serif text-6xl font-bold leading-tight tracking-wide uppercase">
                 Discover the<br />Art of Trends
               </h1>
               <p className="mt-5 max-w-xl text-base text-brown-200 leading-7">
-                인플루언서 & 브랜드 이미지를 AI로 분석하여<br />
-                패션 트렌드를 한눈에 파악합니다
+                인플루언서 & SPA 브랜드 이미지를 AI로 분석하여<br />
+                20대 여성 패션 트렌드를 한눈에 파악합니다
               </p>
               <div className="mt-10 max-w-2xl">
                 <SearchBar onSearch={handleSearch} loading={searchLoading} large />
               </div>
             </div>
-            {/* 장식 원 */}
             <div className="absolute -right-32 -top-32 h-96 w-96 rounded-full bg-brown-600 opacity-40" />
             <div className="absolute -bottom-20 right-40 h-64 w-64 rounded-full bg-brown-500 opacity-30" />
           </section>
 
-          {/* 통계 바 */}
+          {/* 통계 + 크롤링 버튼 */}
           <section className="border-b border-brown-200 bg-cream-50">
             <div className="mx-auto flex max-w-7xl items-center justify-between px-8 py-5">
               <div className="flex gap-10">
                 <Stat label="수집된 이미지" value={stats?.total?.toLocaleString() ?? '—'} />
-                <Stat label="브랜드" value="5" />
-                <Stat label="인플루언서" value={String(stats?.bySource?.instagram ?? '—')} />
+                <Stat label="Instagram" value={String(stats?.bySource?.instagram ?? '—')} />
+                <Stat label="브랜드 룩북" value={String(stats?.bySource?.lookbook ?? '—')} />
                 <Stat label="마지막 수집" value={stats?.lastRun ? formatDate(stats.lastRun) : '—'} />
               </div>
-              <CrawlButton onComplete={fetchStats} />
+              <CrawlButton onComplete={() => { fetchStats(); fetchRecentPosts() }} />
             </div>
           </section>
 
-          {/* 카테고리 그리드 */}
+          {/* 최근 수집 이미지 */}
           <section className="mx-auto max-w-7xl px-8 py-14">
-            <h2 className="mb-8 font-serif text-3xl font-bold uppercase tracking-wide text-brown-700">
-              Browse by Style
-            </h2>
-            <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-              {STYLE_CATEGORIES.map((cat) => (
-                <button
-                  key={cat.label}
-                  onClick={() => handleSearch(cat.query, 60)}
-                  className="group relative overflow-hidden rounded-2xl bg-brown-300 aspect-[4/5]"
-                >
-                  <div className="absolute inset-0 bg-gradient-to-t from-brown-800/80 via-transparent to-transparent" />
-                  <div className="absolute bottom-0 left-0 p-5">
-                    <p className="font-serif text-xl font-bold uppercase tracking-wider text-white">
-                      {cat.label}
-                    </p>
-                  </div>
-                  <div className="absolute inset-0 bg-brown-600/0 transition group-hover:bg-brown-600/20" />
-                </button>
-              ))}
+            <div className="mb-8 flex items-end justify-between">
+              <h2 className="font-serif text-3xl font-bold uppercase tracking-wide text-brown-700">
+                Recently Collected
+              </h2>
+              <button
+                onClick={() => setTab('data')}
+                className="text-sm text-brown-400 hover:text-brown-700 transition"
+              >
+                전체 보기 →
+              </button>
             </div>
+
+            {recentPosts.length === 0 ? (
+              <div className="rounded-2xl border-2 border-dashed border-brown-200 p-16 text-center">
+                <p className="font-serif text-xl text-brown-300">No images yet</p>
+                <p className="mt-2 text-sm text-brown-300">크롤링을 실행하면 이미지가 표시됩니다</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
+                {recentPosts.map((p) => (
+                  <ImageCard
+                    key={p.id}
+                    imageUrl={p.image_url}
+                    accountName={p.account_name}
+                    source={p.source}
+                    postedAt={p.posted_at}
+                    captionAi={p.caption_ai}
+                  />
+                ))}
+              </div>
+            )}
           </section>
         </>
       )}
@@ -173,11 +231,9 @@ export default function Home() {
 
           {searchQuery && (
             <div>
-              <div className="mb-5 flex items-center justify-between">
-                <p className="text-sm text-brown-500">
-                  <span className="font-semibold text-brown-800">"{searchQuery}"</span> — {searchResults.length}개 결과
-                </p>
-              </div>
+              <p className="mb-5 text-sm text-brown-500">
+                <span className="font-semibold text-brown-800">"{searchQuery}"</span> — {searchResults.length}개 결과
+              </p>
 
               {searchLoading ? (
                 <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
@@ -218,7 +274,7 @@ export default function Home() {
               <h2 className="font-serif text-4xl font-bold uppercase tracking-wide text-brown-700">
                 Trend Reports
               </h2>
-              <p className="mt-2 text-sm text-brown-400">AI가 분석한 패션 트렌드 리포트</p>
+              <p className="mt-2 text-sm text-brown-400">AI가 분석한 20대 여성 패션 트렌드 리포트</p>
             </div>
             <button
               onClick={handleGenerateReport}
@@ -288,27 +344,78 @@ export default function Home() {
 
       {/* ── 데이터 ── */}
       {tab === 'data' && (
-        <div className="mx-auto max-w-7xl px-8 py-10">
-          <h2 className="font-serif text-4xl font-bold uppercase tracking-wide text-brown-700">Data</h2>
-          <p className="mt-10 text-center text-brown-300">수집된 원본 데이터 뷰 — 준비 중</p>
+        <div className="mx-auto max-w-7xl px-8 py-10 space-y-6">
+          <div className="flex items-end justify-between">
+            <div>
+              <h2 className="font-serif text-4xl font-bold uppercase tracking-wide text-brown-700">
+                All Images
+              </h2>
+              <p className="mt-2 text-sm text-brown-400">수집된 전체 패션 이미지</p>
+            </div>
+            {/* 소스 필터 */}
+            <div className="flex gap-1 rounded-xl bg-brown-100 p-1">
+              {(['all', 'instagram', 'lookbook'] as const).map((s) => (
+                <button
+                  key={s}
+                  onClick={() => setDataSource(s)}
+                  className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
+                    dataSource === s
+                      ? 'bg-white text-brown-700 shadow-sm'
+                      : 'text-brown-400 hover:text-brown-600'
+                  }`}
+                >
+                  {s === 'all' ? 'All' : s === 'instagram' ? 'Instagram' : 'Lookbook'}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {allPostsLoading && allPosts.length === 0 ? (
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+              {Array.from({ length: 20 }).map((_, i) => (
+                <div key={i} className="aspect-[3/4] animate-pulse rounded-2xl bg-brown-100" />
+              ))}
+            </div>
+          ) : allPosts.length === 0 ? (
+            <div className="rounded-2xl border-2 border-dashed border-brown-200 p-16 text-center">
+              <p className="font-serif text-xl text-brown-300">No images</p>
+              <p className="mt-2 text-sm text-brown-300">크롤링을 먼저 실행해주세요</p>
+            </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+                {allPosts.map((p) => (
+                  <ImageCard
+                    key={p.id}
+                    imageUrl={p.image_url}
+                    accountName={p.account_name}
+                    source={p.source}
+                    postedAt={p.posted_at}
+                    captionAi={p.caption_ai}
+                  />
+                ))}
+              </div>
+              <div className="flex justify-center pt-4">
+                <button
+                  onClick={handleLoadMore}
+                  disabled={allPostsLoading}
+                  className="rounded-xl border border-brown-200 bg-white px-8 py-3 text-sm text-brown-600 transition hover:border-brown-400 disabled:opacity-40"
+                >
+                  {allPostsLoading ? '불러오는 중...' : '더 보기'}
+                </button>
+              </div>
+            </>
+          )}
         </div>
       )}
 
-      {/* Footer */}
       <footer className="mt-20 border-t border-brown-200 bg-brown-700 py-10 text-center">
         <p className="font-serif text-2xl font-bold tracking-widest text-cream-50">CRAI</p>
-        <p className="mt-1 text-xs text-brown-300">Curated Reference AI — Fashion Intelligence</p>
+        <p className="mt-1 text-xs text-brown-300">Curated Reference AI — 20대 여성 패션 인텔리전스</p>
       </footer>
     </div>
   )
 }
-
-const STYLE_CATEGORIES = [
-  { label: 'Comfort Classic', query: 'comfort classic' },
-  { label: 'Oversized',       query: 'oversized' },
-  { label: 'Minimal',         query: '미니멀' },
-  { label: 'Street Style',    query: '스트리트' },
-]
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
