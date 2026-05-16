@@ -19,3 +19,8 @@ frontend/tsconfig.tsbuildinfo
 data
 .omc
 ec2.md
+.env.*
+!.env.example
+.DS_Store
+build/
+coverage/
