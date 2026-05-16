@@ -198,6 +198,47 @@ def save_embedding(post_id: int, embedding: list[float]) -> None:
         conn.commit()
 
 
+def get_fashion_posts_all(limit: int = 50, offset: int = 0, source: str = None) -> list[dict]:
+    """전체 패션 포스팅 조회. 최신 수집순 정렬."""
+    where = "WHERE TRUE"
+    params: list[Any] = []
+    if source:
+        where += " AND source = %s"
+        params.append(source)
+    with _get_connection() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                f"""
+                SELECT id, image_url, account_name, source, posted_at, caption_ai, collected_at
+                FROM fashion_posts
+                {where}
+                ORDER BY collected_at DESC NULLS LAST
+                LIMIT %s OFFSET %s
+                """,
+                params + [limit, offset],
+            )
+            return [dict(r) for r in cur.fetchall()]
+
+
+def get_fashion_stats() -> dict:
+    """fashion_posts 기반 통계."""
+    with _get_connection() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("SELECT COUNT(*) AS cnt FROM fashion_posts")
+            total = cur.fetchone()["cnt"]
+            cur.execute("SELECT source, COUNT(*) AS cnt FROM fashion_posts GROUP BY source")
+            by_source = {r["source"]: r["cnt"] for r in cur.fetchall()}
+            cur.execute(
+                "SELECT run_at FROM crawl_logs WHERE status = 'success' ORDER BY run_at DESC LIMIT 1"
+            )
+            last_run_row = cur.fetchone()
+    return {
+        "total": total,
+        "bySource": by_source,
+        "lastRun": last_run_row["run_at"] if last_run_row else None,
+    }
+
+
 def search_fashion_posts(query_embedding: list[float], days: int = 60, limit: int = 20) -> list[dict]:
     """벡터 유사도 기반 패션 이미지 검색."""
     with _get_connection() as conn:
