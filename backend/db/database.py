@@ -557,3 +557,30 @@ def delete_report(report_id: int) -> bool:
             deleted = cur.rowcount > 0
         conn.commit()
     return deleted
+
+
+def get_uncaptioned_meta_posts(limit: int = 100) -> list[dict]:
+    """caption_ai는 있는데 caption_meta가 없는 포스트 조회."""
+    with _get_connection() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                """
+                SELECT id, caption_ai, image_url, account_name
+                FROM fashion_posts
+                WHERE caption_ai IS NOT NULL AND caption_meta IS NULL
+                LIMIT %s
+                """,
+                (limit,),
+            )
+            return [dict(r) for r in cur.fetchall()]
+
+
+def save_caption_meta(post_id: int, meta: str) -> None:
+    """2차 캡셔닝 결과 저장."""
+    with _get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE fashion_posts SET caption_meta = %s, meta_at = NOW() WHERE id = %s",
+                (meta, post_id),
+            )
+        conn.commit()
