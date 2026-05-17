@@ -96,6 +96,8 @@ def init_db() -> None:
                     image_url TEXT,
                     caption TEXT,
                     likes INTEGER,
+                    comments INTEGER,
+                    followers INTEGER,
                     posted_at TIMESTAMP,
                     collected_at TIMESTAMP DEFAULT NOW(),
                     caption_ai TEXT,
@@ -136,8 +138,8 @@ def save_fashion_posts(items: list[dict]) -> int:
                 cur.execute(
                     """
                     INSERT INTO fashion_posts
-                        (source, account_name, post_url, image_url, caption, likes, posted_at)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                        (source, account_name, post_url, image_url, caption, likes, comments, followers, posted_at)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT (post_url) DO NOTHING
                     """,
                     (
@@ -147,6 +149,8 @@ def save_fashion_posts(items: list[dict]) -> int:
                         item.get("image_url"),
                         item.get("caption"),
                         item.get("likes"),
+                        item.get("comments"),
+                        item.get("followers"),
                         item.get("posted_at"),
                     ),
                 )
