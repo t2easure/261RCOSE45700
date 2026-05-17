@@ -1,4 +1,20 @@
 {
-  "brands": ["zara", "hm", "asos", "mango", "uniqlo"],
-  "influencers": []
+  "brands": ["zara", "hm", "topten10_official", "spao_kr", "uniqlokr"],
+  "influencers": [
+    "dear.zia",
+    "suesasha",
+    "nozeworld",
+    "__jennypark__",
+    "yoonmida",
+    "kieunse",
+    "nayoungkeem",
+    "ch_amii",
+    "heejaeholic",
+    "r_yuhyeju",
+    "moviekim",
+    "yooncharmi",
+    "leejung_lee",
+    "jupppal",
+    "xoonxoap"
+  ]
 }
