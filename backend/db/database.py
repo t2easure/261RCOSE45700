@@ -99,6 +99,8 @@ def init_db() -> None:
                     posted_at TIMESTAMP,
                     collected_at TIMESTAMP DEFAULT NOW(),
                     caption_ai TEXT,
+                    caption_meta TEXT,
+                    meta_at TIMESTAMP,
                     captioned_at TIMESTAMP,
                     embedding vector(384)
                 )
