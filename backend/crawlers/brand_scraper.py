@@ -17,6 +17,7 @@ load_dotenv(Path(__file__).parent.parent.parent / ".env")
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from db.database import save_fashion_posts, log_crawl
+from utils.image_downloader import download_images
 
 URLS_PATH = Path(__file__).parent.parent.parent / "config" / "brand_urls.json"
 
@@ -324,19 +325,39 @@ async def scrape_brand(brand: str, url: str) -> list[dict]:
 async def run_brand_scraper() -> int:
     brand_urls = load_brand_urls()
     total = 0
+    
+    # 로컬 db 디렉토리 설정 및 자동 생성 (현재 실행 중인 CRAI 폴더 기준)
+    local_db_dir = Path("db")
+    local_db_dir.mkdir(parents=True, exist_ok=True)
 
     for brand, url in brand_urls.items():
         print(f"[Brand] 수집 시작: {brand}")
         posts = await scrape_brand(brand, url)
         if posts:
+            download_images(posts)
             saved = save_fashion_posts(posts)
             log_crawl(source="lookbook", game="fashion", status="success", count=saved)
-            print(f"[Brand] {brand}: {saved}개 저장")
+            print(f"[Brand] {brand}: {saved}개 실제 RDS 저장 완료")
+            
+            # 2. 💡 로컬 db 디렉토리에 브랜드별 JSON 파일로 저장
+            local_posts = []
+            for p in posts:
+                p_copy = p.copy()
+                # datetime 객체는 JSON으로 바로 저장 안 되므로 문자열로 변환
+                if hasattr(p_copy['posted_at'], 'isoformat'):
+                    p_copy['posted_at'] = p_copy['posted_at'].isoformat()
+                local_posts.append(p_copy)
+                
+            local_file_path = local_db_dir / f"{brand}.json"
+            with open(local_file_path, "w", encoding="utf-8") as f:
+                json.dump(local_posts, f, ensure_ascii=False, indent=2)
+            print(f"[Local] {brand}: {len(local_posts)}개 로컬 db 저장 완료 ({local_file_path})")
+            
             total += saved
         else:
             print(f"[Brand] {brand}: 이미지 없음")
 
-    print(f"[Brand] 전체 완료: {total}개 저장")
+    print(f"[Brand] 전체 완료: 총 {total}개 데이터 RDS 및 로컬 DB 저장 완료!")
     return total
 
 
