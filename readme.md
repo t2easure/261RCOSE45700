@@ -26,9 +26,10 @@ H&M·유니클로 등 SPA 브랜드 공식 사이트와 한국 인플루언서 I
 | **Claude Vision 캡셔닝** | 실루엣·소재·컬러·스타일 속성을 한국어 전문 용어로 캡셔닝 (`caption_ai`) |
 | **2차 메타 캡셔닝** | 전문용어 캡션을 일반화 키워드 5~8개로 압축 (`caption_meta`) |
 | **시맨틱 검색** | `paraphrase-multilingual-MiniLM-L12-v2` 384차원 벡터 + pgvector 유사도 검색 |
-| **LangGraph 에이전트** | Scout → Vision → Couture MD (Planner+Writer) → Critic → Save 자동화 파이프라인 |
+| **LangGraph 에이전트** | Scout → Couture MD (Planner+Writer) 자동화 파이프라인, DB 저장 |
 | **Self-Correction** | JSON 파싱 실패 및 데이터 부족 시 자동 재시도 (최대 3회) |
 | **Next.js 대시보드** | 시맨틱 검색, 트렌드 리포트 조회, 전체 이미지 브라우징 UI |
+| **파이프라인 API** | 캡셔닝·임베딩을 웹에서 직접 트리거, 실행 상태 실시간 확인 |
 
 ---
 
@@ -41,8 +42,8 @@ H&M·유니클로 등 SPA 브랜드 공식 사이트와 한국 인플루언서 I
 | **DB** | PostgreSQL + pgvector |
 | **크롤링** | Instaloader (Instagram), Playwright + playwright-stealth (브랜드 웹) |
 | **AI — 이미지** | Claude Vision API (1차 전문용어 캡셔닝) |
-| **AI — 메타** | Claude API (2차 일반화 키워드 추출) |
-| **AI — 리포트** | Claude API + LangGraph (Scout·Vision·Couture MD·Critic 에이전트) |
+| **AI — 메타** | Claude Haiku API (2차 일반화 키워드 추출) |
+| **AI — 리포트** | Claude Haiku API + LangGraph (Scout·Couture MD 에이전트) |
 | **임베딩** | SentenceTransformers `paraphrase-multilingual-MiniLM-L12-v2` (384차원) |
 
 ---
@@ -55,9 +56,8 @@ H&M·유니클로 등 SPA 브랜드 공식 사이트와 한국 인플루언서 I
          │  Instaloader                 │  Playwright + Stealth
          ▼                              ▼
 [instagram_collector.py]      [brand_scraper.py]
-  - 브랜드: 30일 룩백            - H&M, 유니클로, ZARA
-  - 인플루언서: 60일 룩백         - 이미지 로컬 저장
-  - 팔로워/댓글 수 수집           - 중복 skip
+  - 인플루언서: 60일 룩백         - H&M, 유니클로, ZARA
+  - 팔로워/댓글 수 수집           - 이미지 로컬 저장 / 중복 skip
          │                              │
          └──────────────┬───────────────┘
                         ▼
@@ -66,21 +66,27 @@ H&M·유니클로 등 SPA 브랜드 공식 사이트와 한국 인플루언서 I
            ┌────────────┼────────────┐
            ▼            ▼            ▼
 [fashion_captioner]  [meta_captioner]  [embedder.py]
- Claude Vision API   Claude API        SentenceTransformers
+ Claude Vision API   Claude Haiku      SentenceTransformers
  caption_ai 생성     caption_meta 생성  embedding(384) 생성
- (전문용어 캡션)      (일반화 키워드)
+ 계정당 50개 제한    (일반화 키워드)
            │
            ▼
 [langgraph_pipeline.py] ← LangGraph Agentic 파이프라인
-  Scout → Vision → Couture MD → Critic → Save
+  Scout → Couture MD (Planner+Writer) → DB 저장
            │
            ▼
        [FastAPI]
-  ├── GET  /search              → pgvector 유사도 검색
-  ├── GET  /posts               → 전체 이미지 목록 (소스 필터, 페이지네이션)
-  ├── GET  /stats               → 수집 통계
-  ├── POST /fashion-reports/generate → 리포트 생성 (백그라운드)
-  └── GET  /fashion-reports          → 리포트 목록
+  ├── GET  /stats                          → 수집 통계
+  ├── GET  /posts?source=&limit=&offset=   → 전체 이미지 목록
+  ├── GET  /search?q=&days=&limit=         → pgvector 유사도 검색
+  ├── GET  /fashion-reports                → 리포트 목록
+  ├── GET  /fashion-reports/{id}           → 리포트 상세
+  ├── GET  /fashion-reports/generate/status → 리포트 생성 진행 상태
+  ├── POST /fashion-reports/generate       → LangGraph 리포트 생성 (백그라운드)
+  ├── GET  /pipeline/status                → 파이프라인 실행 상태
+  ├── POST /pipeline/caption               → 1차 캡셔닝 실행
+  ├── POST /pipeline/meta                  → 2차 메타 캡셔닝 실행
+  └── POST /pipeline/embed                 → 임베딩 실행
            │
            ▼
      [Next.js 대시보드]
@@ -104,7 +110,7 @@ H&M·유니클로 등 SPA 브랜드 공식 사이트와 한국 인플루언서 I
   embedding(384) 저장 — 시맨틱 검색용 벡터
   │
   ▼
-[meta_captioner.py]  Claude API
+[meta_captioner.py]  Claude Haiku API
   caption_meta 저장 — "오버사이즈, 린넨, 베이지, 캐주얼, 셔츠, 와이드팬츠"
 ```
 
@@ -118,16 +124,10 @@ H&M·유니클로 등 SPA 브랜드 공식 사이트와 한국 인플루언서 I
    ├── 50개 미만 → 재시도 (최대 3회)
    └── 충분 →
          ▼
-   [Vision 노드]  caption_ai NULL 이미지 캡셔닝
-         ▼
    [Couture MD 노드]  Planner → 트렌드 5개 선정
                       Writer  → 키워드별 분석문 + 대표 이미지 매칭
          ▼
-   [Critic 노드]  summary / 트렌드 5개 완비 검증
-         ├── 실패 → Couture MD 재시도 (최대 3회)
-         └── 통과 →
-               ▼
-         [Save 노드]  fashion_reports 테이블 저장
+   [DB 저장]  fashion_reports 테이블 저장
 ```
 
 ---
@@ -147,21 +147,20 @@ CRAI/
 │   │   ├── main.py               # FastAPI 앱 (CORS, 라우터, /stats, /posts)
 │   │   └── routers/
 │   │       ├── search.py         # GET /search — 벡터 유사도 검색
-│   │       └── fashion_reports.py # GET/POST /fashion-reports
+│   │       ├── fashion_reports.py # GET/POST /fashion-reports
+│   │       └── pipeline.py       # GET|POST /pipeline/* — 파이프라인 트리거·상태
 │   ├── crawlers/
-│   │   ├── instagram_collector.py # Instaloader, 세션 인증, 브랜드 30일/인플루언서 60일
+│   │   ├── instagram_collector.py # Instaloader, 세션 인증, 인플루언서 60일 룩백
 │   │   └── brand_scraper.py       # Playwright + Stealth, H&M·유니클로·ZARA 스크래핑
 │   ├── pipeline/
-│   │   ├── run_fashion_pipeline.py # 파이프라인 실행 진입점
-│   │   ├── fashion_captioner.py    # Claude Vision 1차 캡셔닝 (비동기, 동시 5개)
-│   │   ├── meta_captioner.py       # Claude 2차 캡셔닝 — 일반화 키워드 추출
-│   │   ├── embedder.py             # SentenceTransformers 배치 임베딩
-│   │   ├── langgraph_pipeline.py   # LangGraph Scout/Vision/Couture MD/Critic/Save
-│   │   └── report_generator.py     # 기존 Planner→Writer 멀티 에이전트 리포트
+│   │   ├── fashion_captioner.py   # Claude Vision 1차 캡셔닝 (비동기, 동시 5개)
+│   │   ├── meta_captioner.py      # Claude Haiku 2차 캡셔닝 — 일반화 키워드 추출
+│   │   ├── embedder.py            # SentenceTransformers 배치 임베딩
+│   │   └── langgraph_pipeline.py  # LangGraph Scout / Couture MD 노드
 │   ├── utils/
-│   │   └── image_downloader.py     # 이미지 로컬 저장 (MD5 해시 중복 방지)
+│   │   └── image_downloader.py    # 이미지 로컬 저장 (MD5 해시 중복 방지)
 │   └── db/
-│       └── database.py             # PostgreSQL + pgvector CRUD
+│       └── database.py            # PostgreSQL + pgvector CRUD
 │
 └── frontend/
     ├── app/
@@ -170,8 +169,13 @@ CRAI/
     │       ├── posts/route.ts
     │       ├── stats/route.ts
     │       ├── search/route.ts
-    │       ├── crawl/route.ts
-    │       └── fashion-reports/route.ts
+    │       ├── fashion-reports/route.ts
+    │       ├── fashion-reports/generate/route.ts
+    │       └── pipeline/
+    │           ├── status/route.ts
+    │           ├── caption/route.ts
+    │           ├── meta/route.ts
+    │           └── embed/route.ts
     └── components/
         ├── Navbar.tsx
         ├── SearchBar.tsx
@@ -214,9 +218,7 @@ CRAI/
 | summary | TEXT | 시즌 전체 요약 |
 | top_keywords | TEXT | 핵심 키워드 (JSON) |
 | style_trends | TEXT | 트렌드별 분석문 + 대표 이미지 (JSON) |
-| full_report | TEXT | 전체 리포트 |
 | post_count | INTEGER | 분석에 사용된 이미지 수 |
-| source_accounts | TEXT | 출처 계정 목록 (JSON) |
 
 ---
 
@@ -227,10 +229,16 @@ CRAI/
 | 메서드 | 경로 | 설명 |
 |--------|------|------|
 | GET | `/stats` | 수집 통계 (전체·소스별) |
-| GET | `/posts?source=&limit=&offset=` | 전체 이미지 목록 |
-| GET | `/search?q=키워드&days=60` | 벡터 유사도 검색 |
+| GET | `/posts?source=&limit=&offset=` | 전체 이미지 목록 (caption_meta 포함) |
+| GET | `/search?q=키워드&days=60` | 벡터 유사도 검색 (caption_meta 포함) |
 | GET | `/fashion-reports` | 트렌드 리포트 목록 |
-| POST | `/fashion-reports/generate` | 리포트 생성 (백그라운드) |
+| GET | `/fashion-reports/{id}` | 트렌드 리포트 상세 |
+| GET | `/fashion-reports/generate/status` | 리포트 생성 진행 상태 |
+| POST | `/fashion-reports/generate` | LangGraph 리포트 생성 (백그라운드) |
+| GET | `/pipeline/status` | 파이프라인 실행 상태 |
+| POST | `/pipeline/caption` | 1차 캡셔닝 실행 |
+| POST | `/pipeline/meta` | 2차 메타 캡셔닝 실행 |
+| POST | `/pipeline/embed` | 임베딩 실행 |
 
 ---
 
@@ -238,24 +246,20 @@ CRAI/
 
 ### ✅ 완료
 
-- Instagram 수집기 — Instaloader 세션 인증, 브랜드 30일/인플루언서 60일 룩백, 팔로워·댓글 수 수집
+- Instagram 수집기 — Instaloader 세션 인증, 인플루언서 60일 룩백, 팔로워·댓글 수 수집
 - 브랜드 스크래퍼 — Playwright + Stealth, H&M·유니클로·ZARA·탑텐·스파오
 - 이미지 로컬 저장 — MD5 해시 기반 중복 방지
 - Claude Vision 1차 캡셔닝 — 비동기 동시 5개, 한국어 전문 용어, 계정당 50개 제한
-- Claude 2차 메타 캡셔닝 — 전문용어 → 일반화 키워드 5~8개 추출
+- Claude Haiku 2차 메타 캡셔닝 — 전문용어 → 일반화 키워드 5~8개 추출
 - SentenceTransformers 임베딩 — 384차원, 배치 처리, pgvector 저장
-- LangGraph 파이프라인 — Scout / Vision / Couture MD 노드 구현
-- 기존 멀티 에이전트 리포트 — Planner → Writer, Self-Correction
-- FastAPI — `/search`, `/posts`, `/stats`, `/fashion-reports` 엔드포인트
+- LangGraph 파이프라인 — Scout / Couture MD (Planner+Writer) 노드 + DB 저장
+- FastAPI — 전체 이미지·검색·통계·리포트·파이프라인 트리거 엔드포인트
 - Next.js 대시보드 — 대시보드, 검색, 리포트, 전체 이미지 탭
 
 ### ⏳ 예정
 
-**AI 파이프라인**
-- LangGraph Critic / Save 노드 + 그래프 조립 완성
-
-**프론트**
-- 리포트 생성 진행 상태 실시간 표시
+- LangGraph Critic 노드 (리포트 품질 검증 + 자동 재시도)
+- 리포트 생성 진행 상태 프론트 실시간 표시
 
 ---
 
@@ -270,14 +274,14 @@ uvicorn api.main:app --reload --port 8001
 cd frontend
 npm run dev   # → http://localhost:3000
 
-# 패션 파이프라인 수동 실행
+# 파이프라인 수동 실행
 cd backend
 python -m crawlers.brand_scraper          # 브랜드 이미지 수집
 python -m crawlers.instagram_collector    # 인플루언서 이미지 수집
 python -m pipeline.fashion_captioner      # Claude Vision 1차 캡셔닝
-python -m pipeline.meta_captioner         # Claude 2차 메타 키워드 추출
+python -m pipeline.meta_captioner         # Claude Haiku 2차 메타 키워드 추출
 python -m pipeline.embedder               # 임베딩 생성
-python -m pipeline.langgraph_pipeline     # LangGraph 에이전트 파이프라인 실행
+python -m pipeline.langgraph_pipeline     # LangGraph 파이프라인 실행
 ```
 
 ### 환경변수 (`.env`)
