@@ -72,7 +72,10 @@ export default function Home() {
   const fetchRecentPosts = useCallback(async () => {
     try {
       const res = await fetch('/api/posts?limit=12')
-      if (res.ok) setRecentPosts(await res.json())
+      if (res.ok) {
+        const data = await res.json()
+        setRecentPosts(data.items ?? data)
+      }
     } catch {}
   }, [])
 
@@ -91,8 +94,9 @@ export default function Home() {
       if (source !== 'all') params.set('source', source)
       const res = await fetch(`/api/posts?${params}`)
       if (res.ok) {
-        const data: Post[] = await res.json()
-        setAllPosts(prev => append ? [...prev, ...data] : data)
+        const data = await res.json()
+        const items: Post[] = data.items ?? data
+        setAllPosts(prev => append ? [...prev, ...items] : items)
       }
     } catch {} finally { setAllPostsLoading(false) }
   }, [])
