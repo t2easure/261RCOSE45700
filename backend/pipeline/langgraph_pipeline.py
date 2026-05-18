@@ -41,7 +41,7 @@ def scout_node(state: CRAIState) -> CRAIState:
             posts = [dict(zip([d[0] for d in cur.description], row)) for row in cur.fetchall()]
 
     print(f"🔍 [Scout] 캡션 완료 포스트: {count}개")
-    return {**state, "data_count": count, "posts": posts}
+    return {**state, "data_count": count, "posts": posts, "retry_count": state["retry_count"] + 1}
 
 
 def should_continue_scout(state: CRAIState) -> str:
