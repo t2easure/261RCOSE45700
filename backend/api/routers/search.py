@@ -35,6 +35,7 @@ def search(
                 "source": r["source"],
                 "posted_at": str(r["posted_at"]) if r["posted_at"] else None,
                 "caption_ai": r["caption_ai"],
+                "caption_meta": r.get("caption_meta"),
                 "similarity": round(float(r["similarity"]), 4),
             }
             for r in results
