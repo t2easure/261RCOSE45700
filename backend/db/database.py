@@ -158,18 +158,23 @@ def save_fashion_posts(items: list[dict]) -> int:
     return inserted
 
 
-def get_uncaptioned_posts(limit: int = 100) -> list[dict]:
-    """caption_ai 없는 패션 포스팅 조회."""
+def get_uncaptioned_posts(limit: int = 100, per_account: int = 50) -> list[dict]:
+    """caption_ai 없는 패션 포스팅 조회 (계정당 최대 per_account개)."""
     with _get_connection() as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(
                 """
                 SELECT id, image_url, account_name, source
-                FROM fashion_posts
-                WHERE caption_ai IS NULL AND image_url IS NOT NULL
+                FROM (
+                    SELECT id, image_url, account_name, source,
+                           ROW_NUMBER() OVER (PARTITION BY account_name ORDER BY id) AS rn
+                    FROM fashion_posts
+                    WHERE caption_ai IS NULL AND image_url IS NOT NULL
+                ) sub
+                WHERE rn <= %s
                 LIMIT %s
                 """,
-                (limit,),
+                (per_account, limit),
             )
             return [dict(row) for row in cur.fetchall()]
 
