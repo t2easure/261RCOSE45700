@@ -220,7 +220,8 @@ def get_fashion_posts_all(limit: int = 50, offset: int = 0, source: str = None) 
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(
                 f"""
-                SELECT id, image_url, account_name, source, posted_at, caption_ai, collected_at
+                SELECT id, image_url, account_name, source, posted_at,
+                       caption_ai, caption_meta, collected_at
                 FROM fashion_posts
                 {where}
                 ORDER BY collected_at DESC NULLS LAST
@@ -256,7 +257,7 @@ def search_fashion_posts(query_embedding: list[float], days: int = 60, limit: in
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(
                 """
-                SELECT id, image_url, account_name, source, posted_at, caption_ai,
+                SELECT id, image_url, account_name, source, posted_at, caption_ai, caption_meta,
                        1 - (embedding <=> %s::vector) AS similarity
                 FROM fashion_posts
                 WHERE posted_at >= NOW() - INTERVAL '%s days'
@@ -593,3 +594,32 @@ def save_caption_meta(post_id: int, meta: str) -> None:
                 (meta, post_id),
             )
         conn.commit()
+
+
+def save_fashion_report(summary: str, top_keywords: list, style_trends: list, post_count: int) -> int:
+    """LangGraph 파이프라인 결과를 fashion_reports 테이블에 저장. 저장된 id 반환."""
+    from datetime import datetime, timezone, timedelta
+    now = datetime.now(timezone.utc)
+    period_start = (now - timedelta(days=60)).strftime("%Y-%m-%d")
+    period_end = now.strftime("%Y-%m-%d")
+    with _get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO fashion_reports
+                    (period_start, period_end, summary, top_keywords, style_trends, post_count)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                RETURNING id
+                """,
+                (
+                    period_start,
+                    period_end,
+                    summary,
+                    json.dumps(top_keywords, ensure_ascii=False),
+                    json.dumps(style_trends, ensure_ascii=False),
+                    post_count,
+                ),
+            )
+            report_id = cur.fetchone()[0]
+        conn.commit()
+    return report_id
