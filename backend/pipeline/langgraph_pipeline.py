@@ -52,3 +52,13 @@ def should_continue_scout(state: CRAIState) -> str:
         print(f"⚠️ [Scout] 데이터 부족 ({state['data_count']}개), 재시도...")
         return "retry"
     return "vision"
+
+
+import asyncio
+from pipeline.fashion_captioner import run_captioning
+
+
+def vision_node(state: CRAIState) -> CRAIState:
+    print("👁️ [Vision] 캡셔닝 안 된 이미지 처리 중...")
+    asyncio.run(run_captioning(batch_size=50))
+    return {**state, "captioning_done": True}
