@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from db.database import init_db, get_fashion_posts_all, get_fashion_stats, _get_connection
-from api.routers import search, fashion_reports, pipeline
+from api.routers import search, fashion_reports, pipeline, crawl
 
 app = FastAPI(title="CRAI API")
 
@@ -26,6 +26,7 @@ def startup():
 app.include_router(search.router)
 app.include_router(fashion_reports.router)
 app.include_router(pipeline.router)
+app.include_router(crawl.router)
 
 
 @app.get("/stats")
