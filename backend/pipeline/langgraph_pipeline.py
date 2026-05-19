@@ -174,3 +174,69 @@ def should_continue_critic(state: CRAIState) -> str:
             return "save"
         return "retry_report"
     return "save"
+
+
+def save_node(state: CRAIState) -> CRAIState:
+    print("💾 [Save] 리포트 저장 중...")
+    report_id = save_fashion_report({
+        "period_start": None,
+        "period_end": None,
+        "summary": state["summary"],
+        "top_keywords": state["top_keywords"],
+        "style_trends": state["style_trends"],
+        "brand_comparison": "자동 생성 리포트",
+        "full_report": state["summary"],
+        "post_count": state["data_count"],
+        "source_accounts": [p.get("account_name") for p in state["posts"] if p.get("account_name")],
+    })
+    print(f"✨ [Save] 리포트 저장 완료! (ID: {report_id})")
+    return {**state, "report_id": report_id}
+
+
+def build_graph():
+    graph = StateGraph(CRAIState)
+
+    graph.add_node("scout", scout_node)
+    graph.add_node("vision", vision_node)
+    graph.add_node("couture_md", couture_md_node)
+    graph.add_node("critic", critic_node)
+    graph.add_node("save", save_node)
+
+    graph.set_entry_point("scout")
+
+    graph.add_conditional_edges("scout", should_continue_scout, {
+        "vision": "vision",
+        "retry": "scout",
+    })
+    graph.add_edge("vision", "couture_md")
+    graph.add_edge("couture_md", "critic")
+    graph.add_conditional_edges("critic", should_continue_critic, {
+        "save": "save",
+        "retry_report": "couture_md",
+    })
+    graph.add_edge("save", END)
+
+    return graph.compile()
+
+
+def run_langgraph_pipeline():
+    app = build_graph()
+    initial_state: CRAIState = {
+        "data_count": 0,
+        "retry_count": 0,
+        "posts": [],
+        "captioning_done": False,
+        "trend_titles": [],
+        "summary": "",
+        "top_keywords": [],
+        "style_trends": [],
+        "validation_passed": False,
+        "report_id": None,
+        "error_messages": [],
+    }
+    result = app.invoke(initial_state)
+    return result["report_id"]
+
+
+if __name__ == "__main__":
+    run_langgraph_pipeline()
