@@ -10,6 +10,25 @@ export default function CrawlButton({ onComplete }: CrawlButtonProps) {
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
 
+  async function pollPipelineStatus(): Promise<void> {
+    return new Promise((resolve) => {
+      const check = async () => {
+        try {
+          const res = await fetch('/api/pipeline/status')
+          const data = await res.json()
+          if (data.state === 'idle' || data.state === 'error') {
+            resolve()
+          } else {
+            setTimeout(check, 2000)
+          }
+        } catch {
+          setTimeout(check, 2000)
+        }
+      }
+      check()
+    })
+  }
+
   async function handleCrawl() {
     setLoading(true)
     setMessage(null)
@@ -50,7 +69,6 @@ export default function CrawlButton({ onComplete }: CrawlButtonProps) {
         const statsRes = await fetch('/api/stats')
         const stats = await statsRes.json()
         const logs = await fetch('/api/logs').then(r => r.json()).catch(() => [])
-        const lastLog = Array.isArray(logs) ? logs[0] : null
         const elapsed = Math.round((Date.now() - startTime) / 1000)
 
         // pipeline 소스 로그가 새로 생겼으면 전체 완료로 판단
@@ -58,7 +76,23 @@ export default function CrawlButton({ onComplete }: CrawlButtonProps) {
         const isNewLog = pipelineLog && pipelineLog.run_at !== lastLogBefore
         if (isNewLog) {
           const newCount = (stats.total ?? 0) - beforeTotal
-          setMessage(`크롤링 완료! ${newCount > 0 ? `${newCount}건 새로 수집` : '새 데이터 없음'} (${elapsed}초 소요)`)
+
+          // 1차 캡셔닝
+          setMessage('크롤링 완료 → 1차 캡셔닝 중...')
+          await fetch('/api/pipeline/caption', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ limit: 50 }) })
+          await pollPipelineStatus()
+
+          // 2차 메타 캡셔닝
+          setMessage('크롤링 완료 → 2차 캡셔닝 중...')
+          await fetch('/api/pipeline/meta', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ limit: 50 }) })
+          await pollPipelineStatus()
+
+          // 임베딩
+          setMessage('크롤링 완료 → 임베딩 중...')
+          await fetch('/api/pipeline/embed', { method: 'POST' })
+          await pollPipelineStatus()
+
+          setMessage(`완료! ${newCount > 0 ? `${newCount}건 새로 수집` : '새 데이터 없음'}`)
           setLoading(false)
           onComplete()
           return
