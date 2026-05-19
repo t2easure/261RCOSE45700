@@ -5,7 +5,7 @@ load_dotenv(Path(__file__).parent.parent.parent / '.env')
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from db.database import init_db, get_fashion_posts_all, get_fashion_stats
+from db.database import init_db, get_fashion_posts_all, get_fashion_stats, _get_connection
 from api.routers import search, fashion_reports, pipeline
 
 app = FastAPI(title="CRAI API")
@@ -30,7 +30,17 @@ app.include_router(pipeline.router)
 
 @app.get("/stats")
 def stats():
-    return get_fashion_stats()
+    data = get_fashion_stats()
+    # 캡셔닝 완료 수 추가
+    with _get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT COUNT(*) FROM fashion_posts WHERE caption_ai IS NOT NULL")
+            data["captioned"] = cur.fetchone()[0]
+            cur.execute("SELECT COUNT(*) FROM fashion_posts WHERE caption_meta IS NOT NULL")
+            data["meta_captioned"] = cur.fetchone()[0]
+            cur.execute("SELECT COUNT(*) FROM fashion_posts WHERE embedding IS NOT NULL")
+            data["embedded"] = cur.fetchone()[0]
+    return data
 
 
 @app.get("/posts")

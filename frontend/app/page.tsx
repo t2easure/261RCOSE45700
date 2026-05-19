@@ -33,6 +33,9 @@ interface Stats {
   total: number
   bySource: Record<string, number>
   lastRun: string | null
+  captioned: number
+  meta_captioned: number
+  embedded: number
 }
 
 export default function Home() {
@@ -175,6 +178,9 @@ export default function Home() {
                 <Stat label="Instagram" value={String(stats?.bySource?.instagram ?? '—')} />
                 <Stat label="브랜드 룩북" value={String(stats?.bySource?.lookbook ?? '—')} />
                 <Stat label="마지막 수집" value={stats?.lastRun ? formatDate(stats.lastRun) : '—'} />
+                <Stat label="1차 캡셔닝" value={String(stats?.captioned ?? '—')} />
+                <Stat label="2차 캡셔닝" value={String(stats?.meta_captioned ?? '—')} />
+                <Stat label="임베딩" value={String(stats?.embedded ?? '—')} />
               </div>
               <CrawlButton onComplete={() => { fetchStats(); fetchRecentPosts() }} />
             </div>
