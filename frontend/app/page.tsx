@@ -51,6 +51,7 @@ export default function Home() {
   const [reportsLoading, setReportsLoading] = useState(false)
   const [selectedReport, setSelectedReport] = useState<FashionReport | null>(null)
   const [reportGenerating, setReportGenerating] = useState(false)
+  const [reportStatusMessage, setReportStatusMessage] = useState<string | null>(null)
 
   // 통계
   const [stats, setStats] = useState<Stats | null>(null)
@@ -125,9 +126,26 @@ export default function Home() {
 
   async function handleGenerateReport() {
     setReportGenerating(true)
+    setReportStatusMessage(null)
     try {
       await fetch('/api/fashion-reports/generate', { method: 'POST' })
-      setTimeout(() => { fetchReports(); setReportGenerating(false) }, 3000)
+      const pollStatus = async (): Promise<void> => {
+        try {
+          const res = await fetch('/api/fashion-reports/generate/status')
+          const data = await res.json()
+          setReportStatusMessage(data.message ?? null)
+          if (data.state === 'idle' || data.state === 'error') {
+            fetchReports()
+            setReportGenerating(false)
+            setReportStatusMessage(null)
+          } else {
+            setTimeout(pollStatus, 2000)
+          }
+        } catch {
+          setTimeout(pollStatus, 2000)
+        }
+      }
+      setTimeout(pollStatus, 2000)
     } catch { setReportGenerating(false) }
   }
 
@@ -286,13 +304,18 @@ export default function Home() {
               </h2>
               <p className="mt-2 text-sm text-brown-400">AI가 분석한 20대 여성 패션 트렌드 리포트</p>
             </div>
-            <button
-              onClick={handleGenerateReport}
-              disabled={reportGenerating}
-              className="rounded-xl bg-brown-600 px-6 py-3 text-sm font-medium text-cream-50 transition hover:bg-brown-700 disabled:opacity-50"
-            >
-              {reportGenerating ? 'Generating...' : '+ Generate Report'}
-            </button>
+            <div className="flex flex-col items-end gap-1">
+              <button
+                onClick={handleGenerateReport}
+                disabled={reportGenerating}
+                className="rounded-xl bg-brown-600 px-6 py-3 text-sm font-medium text-cream-50 transition hover:bg-brown-700 disabled:opacity-50"
+              >
+                {reportGenerating ? 'Generating...' : '+ Generate Report'}
+              </button>
+              {reportStatusMessage && (
+                <span className="text-xs text-brown-400">{reportStatusMessage}</span>
+              )}
+            </div>
           </div>
 
           {selectedReport ? (
