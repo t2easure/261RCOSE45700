@@ -70,6 +70,8 @@ import random
 import re
 import anthropic
 from datetime import datetime, timezone, timedelta
+from langgraph.graph import StateGraph, END
+from pipeline.report_generator import save_fashion_report
 
 
 PLANNER_PROMPT = """당신은 수석 패션 MD 에이전트입니다.
@@ -144,3 +146,31 @@ def couture_md_node(state: CRAIState) -> CRAIState:
         }
     except Exception as e:
         return {**state, "error_messages": state["error_messages"] + [str(e)]}
+
+
+def critic_node(state: CRAIState) -> CRAIState:
+    print("🔎 [Critic] 리포트 검증 중...")
+    errors = []
+
+    if not state.get("summary"):
+        errors.append("summary 없음")
+    if len(state.get("trend_titles", [])) < 5:
+        errors.append(f"트렌드 {len(state.get('trend_titles', []))}개 (5개 필요)")
+    if len(state.get("style_trends", [])) < 5:
+        errors.append("style_trends 부족")
+
+    if errors:
+        print(f"❌ [Critic] 검증 실패: {errors}")
+        return {**state, "validation_passed": False, "error_messages": state["error_messages"] + errors}
+
+    print("✅ [Critic] 검증 통과!")
+    return {**state, "validation_passed": True}
+
+
+def should_continue_critic(state: CRAIState) -> str:
+    if not state["validation_passed"]:
+        if len(state["error_messages"]) >= 3:
+            print("⚠️ [Critic] 재시도 초과, 강제 저장")
+            return "save"
+        return "retry_report"
+    return "save"
