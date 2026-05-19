@@ -71,7 +71,7 @@ import re
 import anthropic
 from datetime import datetime, timezone, timedelta
 from langgraph.graph import StateGraph, END
-from pipeline.report_generator import save_fashion_report
+from db.database import save_fashion_report
 
 
 PLANNER_PROMPT = """당신은 수석 패션 MD 에이전트입니다.
@@ -178,17 +178,12 @@ def should_continue_critic(state: CRAIState) -> str:
 
 def save_node(state: CRAIState) -> CRAIState:
     print("💾 [Save] 리포트 저장 중...")
-    report_id = save_fashion_report({
-        "period_start": None,
-        "period_end": None,
-        "summary": state["summary"],
-        "top_keywords": state["top_keywords"],
-        "style_trends": state["style_trends"],
-        "brand_comparison": "자동 생성 리포트",
-        "full_report": state["summary"],
-        "post_count": state["data_count"],
-        "source_accounts": [p.get("account_name") for p in state["posts"] if p.get("account_name")],
-    })
+    report_id = save_fashion_report(
+        summary=state["summary"],
+        top_keywords=state["top_keywords"],
+        style_trends=state["style_trends"],
+        post_count=state["data_count"],
+    )
     print(f"✨ [Save] 리포트 저장 완료! (ID: {report_id})")
     return {**state, "report_id": report_id}
 
