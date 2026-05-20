@@ -31,12 +31,22 @@ def run_crawl(background_tasks: BackgroundTasks):
         return {"success": False, "message": "크롤링이 이미 실행 중입니다."}
 
     def _run():
+        import threading
         from crawlers.brand_scraper import run_brand_scraper
         from crawlers.instagram_collector import run_instagram_collector
         from datetime import datetime, timezone
         _set("running", "브랜드 스크래핑 중...")
         try:
-            asyncio.run(run_brand_scraper())
+            result = []
+            def _scrape():
+                import asyncio
+                loop = asyncio.ProactorEventLoop()
+                asyncio.set_event_loop(loop)
+                loop.run_until_complete(run_brand_scraper(_status_callback=_set))
+                loop.close()
+            t = threading.Thread(target=_scrape)
+            t.start()
+            t.join()
             _set("running", "Instagram 수집 중...")
             run_instagram_collector()
             _set("idle", "크롤링 완료")
