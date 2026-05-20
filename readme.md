@@ -22,14 +22,15 @@ H&M·유니클로 등 SPA 브랜드 공식 사이트와 한국 인플루언서 I
 
 | | |
 |---|---|
-| **멀티소스 수집** | Instagram 한국 인플루언서 (Instaloader) + H&M·유니클로 브랜드 룩북 (Playwright) |
-| **Claude Vision 캡셔닝** | 실루엣·소재·컬러·스타일 속성을 한국어 전문 용어로 캡셔닝 (`caption_ai`) |
+| **멀티소스 수집** | Instagram 한국 인플루언서 (Instaloader) + H&M·유니클로·ZARA·탑텐·스파오 브랜드 룩북 (Playwright) |
+| **Claude Vision 캡셔닝** | 실루엣·소재·컬러·스타일 속성을 한국어 전문 용어로 캡셔닝 (`caption_ai`), 패션 아닌 이미지 자동 삭제 |
 | **2차 메타 캡셔닝** | 전문용어 캡션을 일반화 키워드 5~8개로 압축 (`caption_meta`) |
-| **시맨틱 검색** | `paraphrase-multilingual-MiniLM-L12-v2` 384차원 벡터 + pgvector 유사도 검색 |
-| **LangGraph 에이전트** | Scout → Couture MD (Planner+Writer) 자동화 파이프라인, DB 저장 |
-| **Self-Correction** | JSON 파싱 실패 및 데이터 부족 시 자동 재시도 (최대 3회) |
+| **시맨틱 검색** | `paraphrase-multilingual-MiniLM-L12-v2` 384차원 벡터 + pgvector 유사도 검색 + Claude 쿼리 확장 |
+| **LangGraph 에이전트** | Scout → Couture MD (Planner+Writer) → Critic 자동화 파이프라인, DB 저장 |
+| **Self-Correction** | Critic 노드: 데이터 부족·JSON 파싱 실패 시 Couture MD로 자동 재시도 (최대 3회) |
 | **Next.js 대시보드** | 시맨틱 검색, 트렌드 리포트 조회, 전체 이미지 브라우징 UI |
-| **파이프라인 API** | 캡셔닝·임베딩을 웹에서 직접 트리거, 실행 상태 실시간 확인 |
+| **크롤링 원클릭 파이프라인** | 크롤 버튼 클릭 → 수집 → 1차 캡셔닝 → 2차 캡셔닝 → 임베딩 자동 순차 실행, 새로 수집한 데이터만 처리 |
+| **중복 수집 방지** | 브랜드 스크래퍼: DB에 이미 있는 URL 발견 시 즉시 조기 종료, Instagram: 마지막 크롤 시각 기준으로 이후 포스트만 수집 |
 
 ---
 
@@ -84,9 +85,11 @@ H&M·유니클로 등 SPA 브랜드 공식 사이트와 한국 인플루언서 I
   ├── GET  /fashion-reports/generate/status → 리포트 생성 진행 상태
   ├── POST /fashion-reports/generate       → LangGraph 리포트 생성 (백그라운드)
   ├── GET  /pipeline/status                → 파이프라인 실행 상태
-  ├── POST /pipeline/caption               → 1차 캡셔닝 실행
-  ├── POST /pipeline/meta                  → 2차 메타 캡셔닝 실행
-  └── POST /pipeline/embed                 → 임베딩 실행
+  ├── POST /pipeline/caption               → 1차 캡셔닝 실행 (since 필터 지원)
+  ├── POST /pipeline/meta                  → 2차 메타 캡셔닝 실행 (since 필터 지원)
+  ├── POST /pipeline/embed                 → 임베딩 실행 (since 필터 지원)
+  ├── POST /crawl                          → 브랜드+Instagram 크롤링 실행 (백그라운드)
+  └── GET  /logs                           → 크롤링 로그 조회
            │
            ▼
      [Next.js 대시보드]
@@ -230,15 +233,17 @@ CRAI/
 |--------|------|------|
 | GET | `/stats` | 수집 통계 (전체·소스별) |
 | GET | `/posts?source=&limit=&offset=` | 전체 이미지 목록 (caption_meta 포함) |
-| GET | `/search?q=키워드&days=60` | 벡터 유사도 검색 (caption_meta 포함) |
+| GET | `/search?q=키워드&days=60` | 벡터 유사도 검색 + Claude 쿼리 확장 |
 | GET | `/fashion-reports` | 트렌드 리포트 목록 |
 | GET | `/fashion-reports/{id}` | 트렌드 리포트 상세 |
 | GET | `/fashion-reports/generate/status` | 리포트 생성 진행 상태 |
 | POST | `/fashion-reports/generate` | LangGraph 리포트 생성 (백그라운드) |
 | GET | `/pipeline/status` | 파이프라인 실행 상태 |
-| POST | `/pipeline/caption` | 1차 캡셔닝 실행 |
-| POST | `/pipeline/meta` | 2차 메타 캡셔닝 실행 |
-| POST | `/pipeline/embed` | 임베딩 실행 |
+| POST | `/pipeline/caption` | 1차 캡셔닝 실행 (since: ISO 날짜 필터) |
+| POST | `/pipeline/meta` | 2차 메타 캡셔닝 실행 (since: ISO 날짜 필터) |
+| POST | `/pipeline/embed` | 임베딩 실행 (since: ISO 날짜 필터) |
+| POST | `/crawl` | 브랜드+Instagram 크롤링 실행 (백그라운드) |
+| GET | `/logs` | 크롤링 로그 조회 |
 
 ---
 
@@ -246,20 +251,18 @@ CRAI/
 
 ### ✅ 완료
 
-- Instagram 수집기 — Instaloader 세션 인증, 인플루언서 60일 룩백, 팔로워·댓글 수 수집
-- 브랜드 스크래퍼 — Playwright + Stealth, H&M·유니클로·ZARA·탑텐·스파오
+- Instagram 수집기 — Instaloader 세션 인증, 마지막 크롤 시각 기준 이후 포스트만 수집
+- 브랜드 스크래퍼 — Playwright + Stealth, H&M·유니클로·ZARA·탑텐·스파오, 중복 URL 조기 종료
 - 이미지 로컬 저장 — MD5 해시 기반 중복 방지
-- Claude Vision 1차 캡셔닝 — 비동기 동시 5개, 한국어 전문 용어, 계정당 50개 제한
+- Claude Vision 1차 캡셔닝 — 비동기 동시 5개, 한국어 전문 용어, 계정당 50개 제한, 패션 아닌 이미지 자동 삭제
 - Claude Haiku 2차 메타 캡셔닝 — 전문용어 → 일반화 키워드 5~8개 추출
 - SentenceTransformers 임베딩 — 384차원, 배치 처리, pgvector 저장
-- LangGraph 파이프라인 — Scout / Couture MD (Planner+Writer) 노드 + DB 저장
-- FastAPI — 전체 이미지·검색·통계·리포트·파이프라인 트리거 엔드포인트
+- LangGraph 파이프라인 — Scout → Couture MD (Planner+Writer) → Critic 노드 + DB 저장
+- Critic 노드 — 트렌드 5개 완비·summary 유무 검증, 실패 시 Couture MD 재시도 (최대 3회)
+- 크롤링 원클릭 파이프라인 — 버튼 클릭 → 수집 → 1차·2차 캡셔닝 → 임베딩 자동 순차 실행, since 필터로 새 데이터만 처리
+- Claude 쿼리 확장 — 검색어를 패션 키워드로 확장하여 시맨틱 검색 품질 향상
+- FastAPI — 전체 이미지·검색·통계·리포트·파이프라인 트리거·크롤링·로그 엔드포인트
 - Next.js 대시보드 — 대시보드, 검색, 리포트, 전체 이미지 탭
-
-### ⏳ 예정
-
-- LangGraph Critic 노드 (리포트 품질 검증 + 자동 재시도)
-- 리포트 생성 진행 상태 프론트 실시간 표시
 
 ---
 
