@@ -31,6 +31,8 @@ H&M·유니클로 등 SPA 브랜드 공식 사이트와 한국 인플루언서 I
 | **Next.js 대시보드** | 시맨틱 검색, 트렌드 리포트 조회, 전체 이미지 브라우징 UI |
 | **크롤링 원클릭 파이프라인** | 크롤 버튼 클릭 → 수집 → 1차 캡셔닝 → 2차 캡셔닝 → 임베딩 자동 순차 실행, 새로 수집한 데이터만 처리 |
 | **중복 수집 방지** | 브랜드 스크래퍼: DB에 이미 있는 URL 발견 시 즉시 조기 종료, Instagram: 마지막 크롤 시각 기준으로 이후 포스트만 수집 |
+| **동적 키워드 태그** | 검색창 하단 키워드 칩을 caption_meta 빈도 기반으로 DB에서 실시간 추출 |
+| **벡터 기반 대표 이미지** | 트렌드 리포트 대표 이미지를 Claude 선택이 아닌 트렌드 제목 pgvector 유사도 검색으로 자동 매칭 |
 
 ---
 
@@ -238,6 +240,8 @@ CRAI/
 | GET | `/fashion-reports/{id}` | 트렌드 리포트 상세 |
 | GET | `/fashion-reports/generate/status` | 리포트 생성 진행 상태 |
 | POST | `/fashion-reports/generate` | LangGraph 리포트 생성 (백그라운드) |
+| GET | `/keywords?limit=10` | caption_meta 빈도 기준 상위 키워드 목록 |
+| GET | `/posts/by-ids?ids=1,2,3` | ID 목록으로 이미지 일괄 조회 |
 | GET | `/pipeline/status` | 파이프라인 실행 상태 |
 | POST | `/pipeline/caption` | 1차 캡셔닝 실행 (since: ISO 날짜 필터) |
 | POST | `/pipeline/meta` | 2차 메타 캡셔닝 실행 (since: ISO 날짜 필터) |
@@ -261,8 +265,11 @@ CRAI/
 - Critic 노드 — 트렌드 5개 완비·summary 유무 검증, 실패 시 Couture MD 재시도 (최대 3회)
 - 크롤링 원클릭 파이프라인 — 버튼 클릭 → 수집 → 1차·2차 캡셔닝 → 임베딩 자동 순차 실행, since 필터로 새 데이터만 처리
 - Claude 쿼리 확장 — 검색어를 패션 키워드로 확장하여 시맨틱 검색 품질 향상
-- FastAPI — 전체 이미지·검색·통계·리포트·파이프라인 트리거·크롤링·로그 엔드포인트
-- Next.js 대시보드 — 대시보드, 검색, 리포트, 전체 이미지 탭
+- 동적 키워드 태그 — caption_meta 빈도 기반 상위 키워드를 DB에서 실시간 추출해 검색창 하단에 표시
+- 벡터 기반 대표 이미지 매칭 — 트렌드 제목을 벡터화해 pgvector로 가장 유사한 이미지 자동 선정
+- FastAPI — 전체 이미지·검색·통계·리포트·파이프라인 트리거·크롤링·로그·키워드·ID조회 엔드포인트
+- Next.js 대시보드 — Trends(대시보드), Search, Reports, Data 탭
+- 이미지 카드 hover 시 전체 캡션 오버레이 표시
 
 ---
 
