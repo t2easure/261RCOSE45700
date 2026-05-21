@@ -89,7 +89,7 @@ PLANNER_PROMPT = """당신은 수석 패션 MD 에이전트입니다.
 }}"""
 
 WRITER_PROMPT = """당신은 패션 리포트 작가 에이전트입니다.
-트렌드 제목에 대해 2~3문장 분석을 작성하고, 대표 이미지 ID 2개를 매칭하세요.
+트렌드 제목에 대해 2~3문장 분석을 작성하세요.
 
 [트렌드 제목]: {title}
 [참고 데이터]: {captions}
@@ -97,8 +97,7 @@ WRITER_PROMPT = """당신은 패션 리포트 작가 에이전트입니다.
 [JSON 양식]
 {{
   "title": "{title}",
-  "content": "트렌드 상세 설명",
-  "representative_ids": [ID1, ID2]
+  "content": "트렌드 상세 설명"
 }}"""
 
 
@@ -109,13 +108,22 @@ def safe_json_parse(text):
     return json.loads(re.sub(r'[\x00-\x1F\x7F]', '', match.group(0)))
 
 
+def search_representative_ids(title: str, limit: int = 2) -> list[int]:
+    from sentence_transformers import SentenceTransformer
+    from db.database import search_fashion_posts
+    model = SentenceTransformer("paraphrase-multilingual-MiniLM-L12-v2")
+    embedding = model.encode(title).tolist()
+    results = search_fashion_posts(embedding, days=365, limit=limit)
+    return [r["id"] for r in results]
+
+
 def couture_md_node(state: CRAIState) -> CRAIState:
     print("🎨 [Couture MD] 트렌드 리포트 생성 중...")
     posts = state["posts"]
     if len(posts) > 200:
         posts = random.sample(posts, 200)
 
-    captions_text = "\n".join([f"ID:{p['id']}|{p['caption_ai']}" for p in posts])
+    captions_text = "\n".join([f"ID:{p['id']}|{p['caption_ai']}" for p in posts[:50]])
     client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
 
     try:
@@ -130,12 +138,21 @@ def couture_md_node(state: CRAIState) -> CRAIState:
         final_trends = []
         for title in plan_data["trend_titles"]:
             print(f"✍️ [Writer] '{title}' 분석 중...")
-            writer_res = client.messages.create(
-                model="claude-haiku-4-5-20251001",
-                max_tokens=1000,
-                messages=[{"role": "user", "content": WRITER_PROMPT.format(title=title, captions=captions_text)}]
-            )
-            final_trends.append(safe_json_parse(writer_res.content[0].text))
+            try:
+                writer_res = client.messages.create(
+                    model="claude-haiku-4-5-20251001",
+                    max_tokens=1000,
+                    messages=[{"role": "user", "content": WRITER_PROMPT.format(title=title, captions=captions_text)}]
+                )
+                print(f"✍️ [Writer] 응답 받음: {writer_res.stop_reason}")
+                parsed = safe_json_parse(writer_res.content[0].text)
+                parsed["representative_ids"] = search_representative_ids(title, limit=2)
+                print(f"✍️ [Writer] JSON 파싱 완료: {parsed.get('title', '')[:20]}, 대표 이미지: {parsed['representative_ids']}")
+                final_trends.append(parsed)
+            except Exception as writer_err:
+                print(f"❌ [Writer] 오류: {writer_err}")
+                print(f"❌ [Writer] 원문: {writer_res.content[0].text[:300] if 'writer_res' in dir() else 'no response'}")
+                raise
 
         return {
             **state,
@@ -182,7 +199,7 @@ def save_node(state: CRAIState) -> CRAIState:
         summary=state["summary"],
         top_keywords=state["top_keywords"],
         style_trends=state["style_trends"],
-        post_count=state["data_count"],
+        post_count=len(state["posts"]),
     )
     print(f"✨ [Save] 리포트 저장 완료! (ID: {report_id})")
     return {**state, "report_id": report_id}

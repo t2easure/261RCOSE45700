@@ -83,7 +83,7 @@ def generate_report(background_tasks: BackgroundTasks):
                 summary=state["summary"],
                 top_keywords=state["top_keywords"],
                 style_trends=state["style_trends"],
-                post_count=state["data_count"],
+                post_count=len(state["posts"]),
             )
             _set("idle", f"리포트 생성 완료 (id={report_id})")
         except Exception as e:
