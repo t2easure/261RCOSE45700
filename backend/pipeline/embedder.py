@@ -16,31 +16,43 @@ def get_model() -> SentenceTransformer:
     return _model
 
 
-def get_unembedded_posts(limit: int = 200) -> list[dict]:
+def get_unembedded_posts(limit: int = 10000, since: str = None) -> list[dict]:
     with _get_connection() as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute(
-                """
-                SELECT id, caption_ai
-                FROM fashion_posts
-                WHERE caption_ai IS NOT NULL AND embedding IS NULL
-                LIMIT %s
-                """,
-                (limit,),
-            )
+            if since:
+                cur.execute(
+                    """
+                    SELECT id, caption_ai
+                    FROM fashion_posts
+                    WHERE caption_ai IS NOT NULL AND embedding IS NULL
+                      AND collected_at >= %s
+                    LIMIT %s
+                    """,
+                    (since, limit),
+                )
+            else:
+                cur.execute(
+                    """
+                    SELECT id, caption_ai
+                    FROM fashion_posts
+                    WHERE caption_ai IS NOT NULL AND embedding IS NULL
+                    LIMIT %s
+                    """,
+                    (limit,),
+                )
             return [dict(row) for row in cur.fetchall()]
 
 
-def run_embedding(batch_size: int = 200) -> int:
+def run_embedding(batch_size: int = 10000, since: str = None) -> int:
     model = get_model()
-    posts = get_unembedded_posts(limit=batch_size)
+    posts = get_unembedded_posts(limit=batch_size, since=since)
 
     if not posts:
         print("[Embedder] 임베딩할 데이터 없음")
         return 0
 
     texts = [p["caption_ai"] for p in posts]
-    embeddings = model.encode(texts, show_progress_bar=True)
+    embeddings = model.encode(texts, show_progress_bar=True, batch_size=128)
 
     success = 0
     for post, emb in zip(posts, embeddings):

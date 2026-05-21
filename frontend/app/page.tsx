@@ -19,13 +19,20 @@ interface SearchResult extends Post {
   similarity: number
 }
 
+interface StyleTrend {
+  title: string
+  content: string
+  representative_ids: number[]
+}
+
 interface FashionReport {
   id: number
   created_at: string
   period_start: string
   period_end: string
   summary: string
-  full_report: string
+  top_keywords: string | string[]
+  style_trends: string | StyleTrend[]
   post_count: number
 }
 
@@ -33,6 +40,9 @@ interface Stats {
   total: number
   bySource: Record<string, number>
   lastRun: string | null
+  captioned: number
+  meta_captioned: number
+  embedded: number
 }
 
 export default function Home() {
@@ -48,6 +58,7 @@ export default function Home() {
   const [reportsLoading, setReportsLoading] = useState(false)
   const [selectedReport, setSelectedReport] = useState<FashionReport | null>(null)
   const [reportGenerating, setReportGenerating] = useState(false)
+  const [reportStatusMessage, setReportStatusMessage] = useState<string | null>(null)
 
   // 통계
   const [stats, setStats] = useState<Stats | null>(null)
@@ -122,9 +133,26 @@ export default function Home() {
 
   async function handleGenerateReport() {
     setReportGenerating(true)
+    setReportStatusMessage(null)
     try {
       await fetch('/api/fashion-reports/generate', { method: 'POST' })
-      setTimeout(() => { fetchReports(); setReportGenerating(false) }, 3000)
+      const pollStatus = async (): Promise<void> => {
+        try {
+          const res = await fetch('/api/fashion-reports/generate/status')
+          const data = await res.json()
+          setReportStatusMessage(data.message ?? null)
+          if (data.state === 'idle' || data.state === 'error') {
+            fetchReports()
+            setReportGenerating(false)
+            setReportStatusMessage(null)
+          } else {
+            setTimeout(pollStatus, 2000)
+          }
+        } catch {
+          setTimeout(pollStatus, 2000)
+        }
+      }
+      setTimeout(pollStatus, 2000)
     } catch { setReportGenerating(false) }
   }
 
@@ -175,6 +203,9 @@ export default function Home() {
                 <Stat label="Instagram" value={String(stats?.bySource?.instagram ?? '—')} />
                 <Stat label="브랜드 룩북" value={String(stats?.bySource?.lookbook ?? '—')} />
                 <Stat label="마지막 수집" value={stats?.lastRun ? formatDate(stats.lastRun) : '—'} />
+                <Stat label="1차 캡셔닝" value={String(stats?.captioned ?? '—')} />
+                <Stat label="2차 캡셔닝" value={String(stats?.meta_captioned ?? '—')} />
+                <Stat label="임베딩" value={String(stats?.embedded ?? '—')} />
               </div>
               <CrawlButton onComplete={() => { fetchStats(); fetchRecentPosts() }} />
             </div>
@@ -280,13 +311,18 @@ export default function Home() {
               </h2>
               <p className="mt-2 text-sm text-brown-400">AI가 분석한 20대 여성 패션 트렌드 리포트</p>
             </div>
-            <button
-              onClick={handleGenerateReport}
-              disabled={reportGenerating}
-              className="rounded-xl bg-brown-600 px-6 py-3 text-sm font-medium text-cream-50 transition hover:bg-brown-700 disabled:opacity-50"
-            >
-              {reportGenerating ? 'Generating...' : '+ Generate Report'}
-            </button>
+            <div className="flex flex-col items-end gap-1">
+              <button
+                onClick={handleGenerateReport}
+                disabled={reportGenerating}
+                className="rounded-xl bg-brown-600 px-6 py-3 text-sm font-medium text-cream-50 transition hover:bg-brown-700 disabled:opacity-50"
+              >
+                {reportGenerating ? 'Generating...' : '+ Generate Report'}
+              </button>
+              {reportStatusMessage && (
+                <span className="text-xs text-brown-400">{reportStatusMessage}</span>
+              )}
+            </div>
           </div>
 
           {selectedReport ? (
@@ -297,16 +333,29 @@ export default function Home() {
               >
                 ← Back to list
               </button>
-              <div className="rounded-2xl bg-white p-8 shadow-sm space-y-5">
+              <div className="rounded-2xl bg-white p-8 shadow-sm space-y-6">
                 <p className="text-xs tracking-widest text-brown-300 uppercase">
                   {selectedReport.period_start} — {selectedReport.period_end}
                 </p>
                 <h3 className="font-serif text-2xl font-bold text-brown-700">{selectedReport.summary}</h3>
-                <div className="rounded-xl bg-cream-100 p-6">
-                  <pre className="whitespace-pre-wrap font-sans text-sm leading-7 text-brown-600">
-                    {selectedReport.full_report}
-                  </pre>
-                </div>
+
+                {/* 키워드 태그 */}
+                {(() => {
+                  const kws = typeof selectedReport.top_keywords === 'string'
+                    ? JSON.parse(selectedReport.top_keywords)
+                    : selectedReport.top_keywords
+                  return Array.isArray(kws) && kws.length > 0 ? (
+                    <div className="flex flex-wrap gap-2">
+                      {kws.map((kw: string) => (
+                        <span key={kw} className="rounded-full bg-brown-100 px-3 py-1 text-xs text-brown-600">{kw}</span>
+                      ))}
+                    </div>
+                  ) : null
+                })()}
+
+                {/* 트렌드별 상세 */}
+                <TrendList styleTrends={selectedReport.style_trends} />
+
                 <p className="text-xs text-brown-300">{selectedReport.post_count}개 이미지 기반 분석</p>
               </div>
             </div>
@@ -417,6 +466,43 @@ export default function Home() {
         <p className="font-serif text-2xl font-bold tracking-widest text-cream-50">CRAI</p>
         <p className="mt-1 text-xs text-brown-300">Curated Reference AI — 20대 여성 패션 인텔리전스</p>
       </footer>
+    </div>
+  )
+}
+
+function TrendList({ styleTrends }: { styleTrends: string | StyleTrend[] }) {
+  const [images, setImages] = useState<Record<number, string>>({})
+  const trends: StyleTrend[] = typeof styleTrends === 'string' ? JSON.parse(styleTrends) : styleTrends
+
+  useEffect(() => {
+    const allIds = trends.flatMap(t => t.representative_ids ?? [])
+    if (allIds.length === 0) return
+    fetch(`/api/posts/by-ids?ids=${allIds.join(',')}`)
+      .then(r => r.json())
+      .then((rows: { id: number; image_url: string }[]) => {
+        const map: Record<number, string> = {}
+        rows.forEach(r => { map[r.id] = r.image_url })
+        setImages(map)
+      })
+      .catch(() => {})
+  }, [])
+
+  if (!Array.isArray(trends)) return null
+  return (
+    <div className="space-y-5">
+      {trends.map((trend, i) => (
+        <div key={i} className="rounded-xl bg-cream-100 p-5 space-y-3">
+          <h4 className="font-serif text-base font-bold text-brown-700">{trend.title}</h4>
+          <p className="text-sm leading-7 text-brown-600">{trend.content}</p>
+          {trend.representative_ids?.length > 0 && (
+            <div className="flex gap-2 flex-wrap">
+              {trend.representative_ids.map(id => images[id] ? (
+                <img key={id} src={images[id]} className="h-36 w-28 object-cover rounded-lg" />
+              ) : null)}
+            </div>
+          )}
+        </div>
+      ))}
     </div>
   )
 }

@@ -33,9 +33,9 @@ async def process_post(client, post, semaphore):
             tqdm.write(f"✗ ID #{post['id']} 실패: {e}")
             return False
 
-async def run_meta_captioning(batch_size: int = 100):
+async def run_meta_captioning(batch_size: int = 10000, since: str = None):
     client = anthropic.AsyncAnthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
-    posts = get_uncaptioned_meta_posts(limit=batch_size)
+    posts = get_uncaptioned_meta_posts(limit=batch_size, since=since)
 
     if not posts:
         print("✨ 처리할 포스트가 없습니다.")

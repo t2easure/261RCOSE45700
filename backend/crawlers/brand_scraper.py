@@ -6,8 +6,8 @@ import io
 from pathlib import Path
 from datetime import datetime, timezone
 
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
-sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace', line_buffering=True)
+sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace', line_buffering=True)
 
 from playwright.async_api import async_playwright
 from playwright_stealth import Stealth
@@ -35,18 +35,18 @@ NOISE_PATTERNS = [
     'flags/', '/flag/', 'payment', 'visa', 'mastercard', 'paypal', 'amex',
     'american-express', '/card', 'badge', 'social/', 'rating', 'star',
     'arrow', 'button', 'sprite', 'ui/', 'favicon',
-    
+
     # 유니클로 노이즈
     'swatch', 'color-chip', '/banner', 'campaign', 'collab', '/chip/', 'width=36',
     'peanuts', 'snoopy', 'miffy', 'sanrio', 'monchhichi', 'graphic-t',
     'lifewear-for-a', 'sustainability', 'anniversary',
-    
+
     # H&M 노이즈
     'category-banner', 'editorial',
-    
+
     # SPAO, Topten, Zara 공통 UI 및 배너 노이즈 추가 (핵심)
-    'bt_', 'btn_', 'top_cart', 'top_wish', 'top_search', 'top_mypage', 
-    'q_r_bt', 'q_r_top', 'quick_today', 'no-bg-btn', 'view_sns', 
+    'bt_', 'btn_', 'top_cart', 'top_wish', 'top_search', 'top_mypage',
+    'q_r_bt', 'q_r_top', 'quick_today', 'no-bg-btn', 'view_sns',
     'transparent-background', 'introapp_floating', 'site-brand', 'bt_ftc'
 ]
 
@@ -112,10 +112,19 @@ def is_fashion_image(url: str, brand_key: str) -> bool:
     return True
 
 
+def get_existing_urls(brand: str) -> set:
+    from db.database import _get_connection
+    with _get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT image_url FROM fashion_posts WHERE account_name = %s", (brand,))
+            return {r[0] for r in cur.fetchall()}
+
+
 async def scrape_brand(brand: str, url: str) -> list[dict]:
     brand_key = get_brand_key(brand)
     now = datetime.now(timezone.utc)
     posts = []
+    existing_urls = get_existing_urls(brand)
 
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=False)
@@ -153,37 +162,31 @@ async def scrape_brand(brand: str, url: str) -> list[dict]:
             while current_page <= max_pages:
                 print(f"[{brand}] --- {current_page} 페이지 수집 시작 ---")
 
-                # 1. 지연 로딩 트리거를 위한 스크롤
-                scroll_count = 50 if brand in ["zara_women", "musinsa_standard_women"] else 5  
-                for i in range(scroll_count):
-                    await page.evaluate("window.scrollBy(0, window.innerHeight * 1.2)")
-                    await asyncio.sleep(2.5)
-                
-                # 1. 지연 로딩 트리거를 위한 스크롤 (자라는 끝날 때까지 무한 스크롤)
+                # 1. 지연 로딩 트리거를 위한 스크롤 (자라는 무한 스크롤만 사용)
                 if "zara" in brand:
                     print(f"[{brand}] 무한 스크롤 시작 (바닥에 도달할 때까지)...")
                     last_height = await page.evaluate("document.body.scrollHeight")
-                    
+
                     while True:
                         # 1. 페이지의 최하단으로 스크롤 이동
                         await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
                         # 새로운 상품 이미지가 로딩될 시간을 넉넉히 대기
                         await asyncio.sleep(2.5)
-                        
+
                         # 2. 스크롤 후의 새로운 페이지 높이 측정
                         new_height = await page.evaluate("document.body.scrollHeight")
-                        
+
                         # 이전 높이와 스크롤 후 높이가 같다면 더 이상 내려갈 곳이 없다는 뜻
                         if new_height == last_height:
                             # 인터넷이 잠깐 느려서 안 불려온 걸 수도 있으니, 1.5초 더 쉬고 한 번만 더 확인해보기 (방어 코드)
                             await asyncio.sleep(1.5)
                             await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
                             new_height = await page.evaluate("document.body.scrollHeight")
-                            
+
                             if new_height == last_height:
                                 print(f"[{brand}] 최하단 바닥에 도달했습니다. 무한 스크롤 종료!")
                                 break
-                                
+
                         last_height = new_height
                 else:
                     # 유니클로, 스파오, 탑텐 같은 일반 페이징 사이트는 기존처럼 5번만 슬쩍 내리기
@@ -197,7 +200,7 @@ async def scrape_brand(brand: str, url: str) -> list[dict]:
                         const imgs = Array.from(document.querySelectorAll('img'));
                         const urls = new Set();
                         imgs.forEach(el => {
-                            if ((el.naturalWidth > 0 && el.naturalWidth < 150) || 
+                            if ((el.naturalWidth > 0 && el.naturalWidth < 150) ||
                                 (el.width > 0 && el.width < 150)) {
                                 return;
                             }
@@ -225,25 +228,31 @@ async def scrape_brand(brand: str, url: str) -> list[dict]:
 
                 # 3. 데이터 정제 및 리스트에 추가
                 page_post_count = 0
+                early_stop = False
                 for src in raw_urls:
                     # 💡 추가된 방어 코드: src가 문자열(str)이 아니면 무시하고 넘어감
                     if not isinstance(src, str):
                         continue
-                        
+
                     norm = normalize_url(src, url)
                     # 이미 수집한 URL이거나 노이즈 이미지면 패스
                     if not norm or norm in seen_urls_global or not is_fashion_image(norm, brand_key):
                         if brand in ['topten_women', 'musinsa_standard_women'] and page_post_count == 0:
                             print(f"[DEBUG] {brand} 필터에 막혀 버려짐: {norm}")
                         continue
-                    
+
+                    if norm in existing_urls:
+                        print(f"[{brand}] 이미 수집된 URL 발견 → 중단")
+                        early_stop = True
+                        break
+
                     seen_urls_global.add(norm)
                     page_post_count += 1
-                    
+
                     posts.append({
                         "source": "lookbook",
                         "account_name": brand,
-                        "post_url": f"{page.url}#{hash(norm) % 999999}", 
+                        "post_url": f"{page.url}#{hash(norm) % 999999}",
                         "image_url": norm,
                         "caption": "",
                         "likes": None,
@@ -251,7 +260,10 @@ async def scrape_brand(brand: str, url: str) -> list[dict]:
                     })
 
                 print(f"[{brand}] {current_page} 페이지: {page_post_count}개 추가됨 (누적: {len(posts)}개)")
-                
+
+                if early_stop:
+                    break
+
                 # 4. 다음 페이지로 이동
                 if current_page >= max_pages:
                     print(f"[{brand}] 설정한 최대 페이지({max_pages})에 도달했습니다.")
@@ -261,15 +273,15 @@ async def scrape_brand(brand: str, url: str) -> list[dict]:
                     # H&M
                     '[data-elid="pagination-next-page-button"]',
                     'button:has-text("다음 페이지 보기")',
-                    
+
                     # 무신사, 스파오, 탑텐 등에서 자주 쓰이는 페이징 형태
                     'a.next', 'a.btn_next', 'a.page-next', 'a.paging_next',
                     'button.next', '.pagination-next', '.page-next',
-                    
+
                     # 화살표 이미지를 버튼으로 쓰는 경우 (한국 쇼핑몰 단골 패턴)
                     'a:has(img[alt*="다음"])', 'a:has(img[alt*="next"])',
                     '[aria-label="Next"]', '[title="Next"]','a[href*="page="] img[src*="next"]',
-                    '.pagination a.next', '.paging-btn.btn.next', 
+                    '.pagination a.next', '.paging-btn.btn.next',
                     '[class*="Pagination"] button:last-child',
                     'a.fa-angle-right',
 
@@ -277,7 +289,7 @@ async def scrape_brand(brand: str, url: str) -> list[dict]:
                     'a:has-text(">")', 'button:has-text("더보기")', 'a:has-text("더보기")'
 
                     'a:has-text("더보기")',
-                    
+
                     # 스파오 전용 다음 버튼 선택자
                     'a:has(img[src*="btn_page_next"])',
                     'a:has(img[src*="next"])'
@@ -290,13 +302,13 @@ async def scrape_brand(brand: str, url: str) -> list[dict]:
                         # 버튼이 화면에 보이고, 비활성화(disabled) 상태가 아닐 때 클릭
                         if await next_btn.is_visible(timeout=1000) and not await next_btn.is_disabled():
                             await next_btn.click()
-                            
+
                             # 네트워크 통신이 어느 정도 잠잠해질 때까지 대기 (페이지 이동 로딩 대기)
                             try:
                                 await page.wait_for_load_state("networkidle", timeout=10000)
                             except:
                                 pass # 타임아웃 나도 스크립트 멈추지 않고 계속 진행
-                                
+
                             await asyncio.sleep(3) # 추가 안전 대기
                             clicked = True
                             break
@@ -322,23 +334,25 @@ async def scrape_brand(brand: str, url: str) -> list[dict]:
     return posts
 
 
-async def run_brand_scraper() -> int:
+async def run_brand_scraper(_status_callback=None) -> int:
     brand_urls = load_brand_urls()
     total = 0
-    
+
     # 로컬 db 디렉토리 설정 및 자동 생성 (현재 실행 중인 CRAI 폴더 기준)
     local_db_dir = Path("db")
     local_db_dir.mkdir(parents=True, exist_ok=True)
 
     for brand, url in brand_urls.items():
         print(f"[Brand] 수집 시작: {brand}")
+        if _status_callback:
+            _status_callback("running", f"브랜드 스크래핑 중: {brand}")
         posts = await scrape_brand(brand, url)
         if posts:
             download_images(posts)
             saved = save_fashion_posts(posts)
             log_crawl(source="lookbook", game="fashion", status="success", count=saved)
             print(f"[Brand] {brand}: {saved}개 실제 RDS 저장 완료")
-            
+
             # 2. 💡 로컬 db 디렉토리에 브랜드별 JSON 파일로 저장
             local_posts = []
             for p in posts:
@@ -347,12 +361,12 @@ async def run_brand_scraper() -> int:
                 if hasattr(p_copy['posted_at'], 'isoformat'):
                     p_copy['posted_at'] = p_copy['posted_at'].isoformat()
                 local_posts.append(p_copy)
-                
+
             local_file_path = local_db_dir / f"{brand}.json"
             with open(local_file_path, "w", encoding="utf-8") as f:
                 json.dump(local_posts, f, ensure_ascii=False, indent=2)
             print(f"[Local] {brand}: {len(local_posts)}개 로컬 db 저장 완료 ({local_file_path})")
-            
+
             total += saved
         else:
             print(f"[Brand] {brand}: 이미지 없음")

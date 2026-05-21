@@ -5,8 +5,8 @@ load_dotenv(Path(__file__).parent.parent.parent / '.env')
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from db.database import init_db, get_fashion_posts_all, get_fashion_stats
-from api.routers import search, fashion_reports, pipeline
+from db.database import init_db, get_fashion_posts_all, get_fashion_stats, _get_connection
+from api.routers import search, fashion_reports, pipeline, crawl
 
 app = FastAPI(title="CRAI API")
 
@@ -26,11 +26,51 @@ def startup():
 app.include_router(search.router)
 app.include_router(fashion_reports.router)
 app.include_router(pipeline.router)
+app.include_router(crawl.router)
 
 
 @app.get("/stats")
 def stats():
-    return get_fashion_stats()
+    data = get_fashion_stats()
+    # 캡셔닝 완료 수 추가
+    with _get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT COUNT(*) FROM fashion_posts WHERE caption_ai IS NOT NULL")
+            data["captioned"] = cur.fetchone()[0]
+            cur.execute("SELECT COUNT(*) FROM fashion_posts WHERE caption_meta IS NOT NULL")
+            data["meta_captioned"] = cur.fetchone()[0]
+            cur.execute("SELECT COUNT(*) FROM fashion_posts WHERE embedding IS NOT NULL")
+            data["embedded"] = cur.fetchone()[0]
+    return data
+
+
+@app.get("/keywords")
+def top_keywords(limit: int = 10):
+    with _get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT caption_meta FROM fashion_posts WHERE caption_meta IS NOT NULL")
+            rows = cur.fetchall()
+    from collections import Counter
+    counter = Counter()
+    for (meta,) in rows:
+        for kw in [k.strip() for k in meta.split(",") if k.strip()]:
+            counter[kw] += 1
+    return [kw for kw, _ in counter.most_common(limit)]
+
+
+@app.get("/posts/by-ids")
+def posts_by_ids(ids: str):
+    id_list = [int(i) for i in ids.split(",") if i.strip().isdigit()]
+    if not id_list:
+        return []
+    with _get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"SELECT id, image_url, account_name FROM fashion_posts WHERE id = ANY(%s)",
+                (id_list,)
+            )
+            rows = cur.fetchall()
+    return [{"id": r[0], "image_url": r[1], "account_name": r[2]} for r in rows]
 
 
 @app.get("/posts")

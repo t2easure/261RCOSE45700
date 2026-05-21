@@ -5,7 +5,7 @@ from pathlib import Path
 
 import instaloader
 
-from db.database import save_fashion_posts, log_crawl
+from db.database import save_fashion_posts, log_crawl, _get_connection
 from utils.image_downloader import download_images
 
 ACCOUNTS_PATH = Path(__file__).parent.parent.parent / "config" / "instagram_accounts.json"
@@ -17,8 +17,23 @@ def load_accounts() -> tuple[list[str], list[str]]:
     return data.get("brands", []), data.get("influencers", [])
 
 
-def collect_account(loader: instaloader.Instaloader, username: str, days: int = 60) -> list[dict]:
-    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+def get_last_crawl_time() -> datetime:
+    try:
+        with _get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT run_at FROM crawl_logs WHERE status='success' ORDER BY run_at DESC LIMIT 1")
+                row = cur.fetchone()
+                if row:
+                    from dateutil.parser import parse
+                    return parse(str(row[0]))
+    except Exception:
+        pass
+    return datetime.now(timezone.utc) - timedelta(days=7)
+
+
+def collect_account(loader: instaloader.Instaloader, username: str, cutoff: datetime = None) -> list[dict]:
+    if cutoff is None:
+        cutoff = get_last_crawl_time()
     posts = []
 
     try:
@@ -49,7 +64,7 @@ def collect_account(loader: instaloader.Instaloader, username: str, days: int = 
     return posts
 
 
-def run_instagram_collector(days: int = 30) -> int:
+def run_instagram_collector() -> int:
     loader = instaloader.Instaloader(
         download_pictures=False,
         download_videos=False,
@@ -58,27 +73,18 @@ def run_instagram_collector(days: int = 30) -> int:
         quiet=True,
     )
     try:
-        loader.load_session_from_file("tjduswl8@gmail.com")
+        loader.load_session_from_file("tieusian_freaky")
         print("[Instagram] 세션 로드 성공")
     except Exception as e:
         print(f"[Instagram] 세션 로드 실패 (비로그인 진행): {e}")
     brands, influencers = load_accounts()
+    cutoff = get_last_crawl_time()
+    print(f"[Instagram] 마지막 크롤링 기준: {cutoff.strftime('%Y-%m-%d %H:%M')} 이후 수집")
     total = 0
 
-    for username in brands:
+    for username in brands + influencers:
         print(f"[Instagram] 수집 시작: @{username}")
-        posts = collect_account(loader, username, days=30)
-        if posts:
-            download_images(posts)
-            saved = save_fashion_posts(posts)
-            log_crawl(source="instagram", game="fashion", status="success", count=saved)
-            print(f"[Instagram] @{username}: {saved}개 저장")
-            total += saved
-        time.sleep(10)
-
-    for username in influencers:
-        print(f"[Instagram] 수집 시작: @{username}")
-        posts = collect_account(loader, username, days=60)
+        posts = collect_account(loader, username, cutoff=cutoff)
         if posts:
             download_images(posts)
             saved = save_fashion_posts(posts)
@@ -92,4 +98,4 @@ def run_instagram_collector(days: int = 30) -> int:
 
 
 if __name__ == "__main__":
-    run_instagram_collector(days=60)
+    run_instagram_collector()

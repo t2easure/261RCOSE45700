@@ -47,7 +47,12 @@ export default function ImageCard({ imageUrl, accountName, source, postedAt, cap
           {dateStr && <span className="text-[10px] text-brown-300">{dateStr}</span>}
         </div>
         {captionAi && (
-          <p className="line-clamp-2 text-[11px] leading-5 text-brown-500">{captionAi}</p>
+          <div className="relative">
+            <p className="line-clamp-2 text-[11px] leading-5 text-brown-500">{captionAi}</p>
+            <div className="absolute bottom-full left-0 z-10 hidden group-hover:block w-full rounded-xl bg-white border border-brown-100 shadow-lg p-3 text-[11px] leading-5 text-brown-600">
+              {captionAi}
+            </div>
+          </div>
         )}
       </div>
     </div>
