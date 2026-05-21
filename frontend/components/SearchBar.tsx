@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 
 interface SearchBarProps {
   onSearch: (query: string, days: number) => void
@@ -13,11 +13,17 @@ const PERIOD_OPTIONS = [
   { value: 60, label: '2 Months' },
 ]
 
-const SUGGESTED = ['Comfort Classic', 'Oversized', 'Neutral Tone', 'Crop Jacket', 'Icy Blue', '미니멀', '스트리트']
-
 export default function SearchBar({ onSearch, loading, large }: SearchBarProps) {
   const [query, setQuery] = useState('')
   const [days, setDays] = useState(60)
+  const [suggested, setSuggested] = useState<string[]>([])
+
+  useEffect(() => {
+    fetch('/api/keywords')
+      .then(r => r.json())
+      .then(setSuggested)
+      .catch(() => {})
+  }, [])
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -57,7 +63,7 @@ export default function SearchBar({ onSearch, loading, large }: SearchBarProps) 
       </form>
 
       <div className="flex flex-wrap gap-2">
-        {SUGGESTED.map((kw) => (
+        {suggested.map((kw) => (
           <button
             key={kw}
             onClick={() => { setQuery(kw); onSearch(kw, days) }}
