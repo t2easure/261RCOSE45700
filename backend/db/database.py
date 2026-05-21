@@ -616,11 +616,11 @@ def save_caption_meta(post_id: int, meta: str) -> None:
         conn.commit()
 
 
-def save_fashion_report(summary: str, top_keywords: list, style_trends: list, post_count: int) -> int:
+def save_fashion_report(summary: str, top_keywords: list, style_trends: list, post_count: int, days: int = 30) -> int:
     """LangGraph 파이프라인 결과를 fashion_reports 테이블에 저장. 저장된 id 반환."""
     from datetime import datetime, timezone, timedelta
     now = datetime.now(timezone.utc)
-    period_start = (now - timedelta(days=60)).strftime("%Y-%m-%d")
+    period_start = (now - timedelta(days=days)).strftime("%Y-%m-%d") if days > 0 else None
     period_end = now.strftime("%Y-%m-%d")
     with _get_connection() as conn:
         with conn.cursor() as cur:

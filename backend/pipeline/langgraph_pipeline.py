@@ -9,6 +9,7 @@ class CRAIState(TypedDict):
     data_count: int
     retry_count: int
     posts: list[dict]
+    days: int
 
     # Vision
     captioning_done: bool
@@ -30,14 +31,26 @@ from db.database import _get_connection
 
 
 def scout_node(state: CRAIState) -> CRAIState:
-    print(f"🔍 [Scout] DB 데이터 확인 중... (시도 {state['retry_count'] + 1}회)")
+    days = state.get("days", 30)
+    print(f"🔍 [Scout] DB 데이터 확인 중... (시도 {state['retry_count'] + 1}회, 최근 {days}일)")
     with _get_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT COUNT(*) FROM fashion_posts WHERE caption_ai IS NOT NULL")
-            count = cur.fetchone()[0]
-            cur.execute(
-                "SELECT id, caption_ai, account_name FROM fashion_posts WHERE caption_ai IS NOT NULL ORDER BY collected_at DESC LIMIT 200"
-            )
+            if days == 0:
+                cur.execute("SELECT COUNT(*) FROM fashion_posts WHERE caption_ai IS NOT NULL")
+                count = cur.fetchone()[0]
+                cur.execute(
+                    "SELECT id, caption_ai, account_name FROM fashion_posts WHERE caption_ai IS NOT NULL ORDER BY collected_at DESC LIMIT 200"
+                )
+            else:
+                cur.execute(
+                    "SELECT COUNT(*) FROM fashion_posts WHERE caption_ai IS NOT NULL AND collected_at >= NOW() - (%s || ' days')::interval",
+                    (days,),
+                )
+                count = cur.fetchone()[0]
+                cur.execute(
+                    "SELECT id, caption_ai, account_name FROM fashion_posts WHERE caption_ai IS NOT NULL AND collected_at >= NOW() - (%s || ' days')::interval ORDER BY collected_at DESC LIMIT 200",
+                    (days,),
+                )
             posts = [dict(zip([d[0] for d in cur.description], row)) for row in cur.fetchall()]
 
     print(f"🔍 [Scout] 캡션 완료 포스트: {count}개")
@@ -108,11 +121,18 @@ def safe_json_parse(text):
     return json.loads(re.sub(r'[\x00-\x1F\x7F]', '', match.group(0)))
 
 
-def search_representative_ids(title: str, limit: int = 2) -> list[int]:
-    from sentence_transformers import SentenceTransformer
+_repr_model = None
+
+def search_representative_ids(title: str, limit: int = 2, model=None) -> list[int]:
     from db.database import search_fashion_posts
-    model = SentenceTransformer("paraphrase-multilingual-MiniLM-L12-v2")
-    embedding = model.encode(title).tolist()
+    emb_model = model
+    if emb_model is None:
+        global _repr_model
+        if _repr_model is None:
+            from sentence_transformers import SentenceTransformer
+            _repr_model = SentenceTransformer("paraphrase-multilingual-MiniLM-L12-v2")
+        emb_model = _repr_model
+    embedding = emb_model.encode(title).tolist()
     results = search_fashion_posts(embedding, days=365, limit=limit)
     return [r["id"] for r in results]
 
@@ -135,6 +155,10 @@ def couture_md_node(state: CRAIState) -> CRAIState:
         plan_data = safe_json_parse(plan_res.content[0].text)
         print(f"✅ [Planner] {len(plan_data['trend_titles'])}개 트렌드 선정")
 
+        from sentence_transformers import SentenceTransformer
+        repr_model = SentenceTransformer("paraphrase-multilingual-MiniLM-L12-v2")
+        print("✅ [Couture MD] 임베딩 모델 로딩 완료")
+
         final_trends = []
         for title in plan_data["trend_titles"]:
             print(f"✍️ [Writer] '{title}' 분석 중...")
@@ -146,7 +170,7 @@ def couture_md_node(state: CRAIState) -> CRAIState:
                 )
                 print(f"✍️ [Writer] 응답 받음: {writer_res.stop_reason}")
                 parsed = safe_json_parse(writer_res.content[0].text)
-                parsed["representative_ids"] = search_representative_ids(title, limit=2)
+                parsed["representative_ids"] = search_representative_ids(title, limit=2, model=repr_model)
                 print(f"✍️ [Writer] JSON 파싱 완료: {parsed.get('title', '')[:20]}, 대표 이미지: {parsed['representative_ids']}")
                 final_trends.append(parsed)
             except Exception as writer_err:
@@ -237,6 +261,7 @@ def run_langgraph_pipeline():
         "data_count": 0,
         "retry_count": 0,
         "posts": [],
+        "days": 30,
         "captioning_done": False,
         "trend_titles": [],
         "summary": "",
