@@ -59,6 +59,9 @@ export default function Home() {
   const [selectedReport, setSelectedReport] = useState<FashionReport | null>(null)
   const [reportGenerating, setReportGenerating] = useState(false)
   const [reportStatusMessage, setReportStatusMessage] = useState<string | null>(null)
+  const [reportDays, setReportDays] = useState(30)
+  const [reportPostCount, setReportPostCount] = useState<number | null>(null)
+  const [showGenerateModal, setShowGenerateModal] = useState(false)
 
   // 통계
   const [stats, setStats] = useState<Stats | null>(null)
@@ -117,6 +120,13 @@ export default function Home() {
   useEffect(() => {
     if (tab === 'data') { setDataOffset(0); fetchAllPosts(dataSource, 0) }
   }, [tab, dataSource, fetchAllPosts])
+  useEffect(() => {
+    if (tab !== 'reports') return
+    fetch(`/api/fashion-reports/count?days=${reportDays}`)
+      .then(r => r.json())
+      .then(d => setReportPostCount(d.count))
+      .catch(() => {})
+  }, [tab, reportDays])
 
   async function handleSearch(query: string, days: number) {
     setSearchLoading(true)
@@ -131,11 +141,19 @@ export default function Home() {
     } catch {} finally { setSearchLoading(false) }
   }
 
-  async function handleGenerateReport() {
+  async function handleGenerateReport(confirmedDays?: number) {
+    const days = confirmedDays ?? reportDays
+    if (reportPostCount !== null && reportPostCount < 50) {
+      if (!window.confirm('데이터가 부족합니다. 이대로 진행할까요?')) return
+    }
     setReportGenerating(true)
     setReportStatusMessage(null)
     try {
-      await fetch('/api/fashion-reports/generate', { method: 'POST' })
+      await fetch('/api/fashion-reports/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ days }),
+      })
       const pollStatus = async (): Promise<void> => {
         try {
           const res = await fetch('/api/fashion-reports/generate/status')
@@ -144,7 +162,8 @@ export default function Home() {
           if (data.state === 'idle' || data.state === 'error') {
             fetchReports()
             setReportGenerating(false)
-            setReportStatusMessage(null)
+            setReportStatusMessage(data.state === 'error' ? `오류: ${data.message}` : '✅ 리포트 생성 완료!')
+            setTimeout(() => setReportStatusMessage(null), 3000)
           } else {
             setTimeout(pollStatus, 2000)
           }
@@ -301,6 +320,56 @@ export default function Home() {
         </div>
       )}
 
+      {/* ── 리포트 생성 모달 ── */}
+      {showGenerateModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="w-80 rounded-2xl bg-white p-6 shadow-xl space-y-4">
+            <h3 className="font-serif text-lg font-bold text-brown-700">리포트 생성</h3>
+            <div className="space-y-2">
+              <label className="text-sm text-brown-600">분석 기간</label>
+              <select
+                value={reportDays}
+                onChange={e => setReportDays(Number(e.target.value))}
+                className="w-full rounded-xl border border-brown-200 bg-white px-3 py-2.5 text-sm text-brown-600 outline-none focus:border-brown-400"
+              >
+                <option value={1}>최근 1일</option>
+                <option value={2}>최근 2일</option>
+                <option value={3}>최근 3일</option>
+                <option value={7}>최근 1주</option>
+                <option value={14}>최근 2주</option>
+                <option value={30}>최근 1달</option>
+                <option value={60}>최근 2달</option>
+                <option value={0}>전체</option>
+              </select>
+              {reportPostCount !== null && (
+                <p className={`text-xs ${reportPostCount < 50 ? 'text-red-400' : 'text-brown-400'}`}>
+                  {reportPostCount < 50
+                    ? `⚠ 데이터 부족 (${reportPostCount}개)`
+                    : `${reportPostCount}개 포스트 기반`}
+                </p>
+              )}
+            </div>
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => setShowGenerateModal(false)}
+                className="rounded-xl border border-brown-200 px-4 py-2 text-sm text-brown-500 hover:bg-brown-50"
+              >
+                취소
+              </button>
+              <button
+                onClick={() => {
+                  setShowGenerateModal(false)
+                  handleGenerateReport()
+                }}
+                className="rounded-xl bg-brown-600 px-4 py-2 text-sm font-medium text-cream-50 hover:bg-brown-700"
+              >
+                생성
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── 리포트 ── */}
       {tab === 'reports' && (
         <div className="mx-auto max-w-7xl px-8 py-10 space-y-8">
@@ -313,7 +382,7 @@ export default function Home() {
             </div>
             <div className="flex flex-col items-end gap-1">
               <button
-                onClick={handleGenerateReport}
+                onClick={() => setShowGenerateModal(true)}
                 disabled={reportGenerating}
                 className="rounded-xl bg-brown-600 px-6 py-3 text-sm font-medium text-cream-50 transition hover:bg-brown-700 disabled:opacity-50"
               >
@@ -335,7 +404,9 @@ export default function Home() {
               </button>
               <div className="rounded-2xl bg-white p-8 shadow-sm space-y-6">
                 <p className="text-xs tracking-widest text-brown-300 uppercase">
-                  {selectedReport.period_start} — {selectedReport.period_end}
+                  {selectedReport.period_start
+                    ? `${selectedReport.period_start} — ${selectedReport.period_end}`
+                    : `전체 기간 — ${selectedReport.period_end}`}
                 </p>
                 <h3 className="font-serif text-2xl font-bold text-brown-700">{selectedReport.summary}</h3>
 
