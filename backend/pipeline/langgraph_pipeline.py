@@ -44,12 +44,12 @@ def scout_node(state: CRAIState) -> CRAIState:
             else:
                 cur.execute(
                     "SELECT COUNT(*) FROM fashion_posts WHERE caption_ai IS NOT NULL AND collected_at >= NOW() - (%s || ' days')::interval",
-                    (days,),
+                    (str(days),),
                 )
                 count = cur.fetchone()[0]
                 cur.execute(
                     "SELECT id, caption_ai, account_name FROM fashion_posts WHERE caption_ai IS NOT NULL AND collected_at >= NOW() - (%s || ' days')::interval ORDER BY collected_at DESC LIMIT 200",
-                    (days,),
+                    (str(days),),
                 )
             posts = [dict(zip([d[0] for d in cur.description], row)) for row in cur.fetchall()]
 

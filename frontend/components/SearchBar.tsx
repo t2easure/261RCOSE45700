@@ -37,7 +37,7 @@ export default function SearchBar({ onSearch, loading, large }: SearchBarProps) 
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search fashion keywords (e.g. Comfort Classic)"
+          placeholder="패션 트렌드를 자유롭게 검색해보세요 (예: 편하면서 세련된 출근룩)"
           className={`flex-1 border border-brown-200 bg-white px-5 text-brown-800 placeholder-brown-300 outline-none transition focus:border-brown-500 focus:ring-2 focus:ring-brown-100 ${
             large ? 'rounded-2xl py-4 text-base' : 'rounded-xl py-3 text-sm'
           }`}

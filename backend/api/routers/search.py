@@ -1,3 +1,5 @@
+import os
+import anthropic
 from fastapi import APIRouter, Query
 from sentence_transformers import SentenceTransformer
 
@@ -15,17 +17,34 @@ def get_model() -> SentenceTransformer:
     return _model
 
 
+def expand_query(q: str) -> tuple[str, list[str]]:
+    try:
+        client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
+        res = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=100,
+            messages=[{"role": "user", "content": f"다음 패션 검색어를 관련 키워드로 확장해줘. 쉼표로 구분해서 한 줄로만 반환해. 검색어: {q}"}]
+        )
+        expanded = res.content[0].text.strip()
+        keywords = [k.strip() for k in expanded.split(",") if k.strip()]
+        return expanded, keywords
+    except Exception:
+        return q, [q]
+
+
 @router.get("")
 def search(
-    q: str = Query(..., description="패션 키워드 (예: 컴포트 클래식)"),
+    q: str = Query(..., description="패션 검색어 (자연어 가능)"),
     days: int = Query(60, description="검색 기간 (일)"),
     limit: int = Query(20, description="결과 수"),
 ):
-    query_embedding = get_model().encode(q).tolist()
+    expanded_text, keywords = expand_query(q)
+    query_embedding = get_model().encode(expanded_text).tolist()
     results = search_fashion_posts(query_embedding, days=days, limit=limit)
 
     return {
         "query": q,
+        "expanded_keywords": keywords,
         "total": len(results),
         "results": [
             {

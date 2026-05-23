@@ -52,6 +52,7 @@ export default function Home() {
   const [searchResults, setSearchResults] = useState<SearchResult[]>([])
   const [searchLoading, setSearchLoading] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
+  const [expandedKeywords, setExpandedKeywords] = useState<string[]>([])
 
   // 리포트
   const [reports, setReports] = useState<FashionReport[]>([])
@@ -137,6 +138,7 @@ export default function Home() {
       if (res.ok) {
         const data = await res.json()
         setSearchResults(data.results ?? [])
+        setExpandedKeywords(data.expanded_keywords ?? [])
       }
     } catch {} finally { setSearchLoading(false) }
   }
@@ -285,9 +287,19 @@ export default function Home() {
 
           {searchQuery && (
             <div>
-              <p className="mb-5 text-sm text-brown-500">
-                <span className="font-semibold text-brown-800">"{searchQuery}"</span> — {searchResults.length}개 결과
-              </p>
+              <div className="mb-5 space-y-2">
+                <p className="text-sm text-brown-500">
+                  <span className="font-semibold text-brown-800">"{searchQuery}"</span> — {searchResults.length}개 결과
+                </p>
+                {expandedKeywords.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-xs text-brown-400">검색 키워드:</span>
+                    {expandedKeywords.map((kw) => (
+                      <span key={kw} className="rounded-full bg-brown-100 px-2.5 py-1 text-xs text-brown-600">{kw}</span>
+                    ))}
+                  </div>
+                )}
+              </div>
 
               {searchLoading ? (
                 <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">

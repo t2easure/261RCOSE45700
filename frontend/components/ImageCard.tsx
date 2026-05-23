@@ -1,5 +1,7 @@
 'use client'
 
+import { useState } from 'react'
+
 interface ImageCardProps {
   imageUrl: string
   accountName: string
@@ -16,9 +18,12 @@ const SOURCE_LABELS: Record<string, string> = {
 }
 
 export default function ImageCard({ imageUrl, accountName, source, postedAt, captionAi, similarity }: ImageCardProps) {
+  const [imgError, setImgError] = useState(false)
   const dateStr = postedAt
     ? new Date(postedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
     : ''
+
+  if (imgError) return null
 
   return (
     <div className="group overflow-hidden rounded-2xl bg-white shadow-sm transition hover:shadow-md">
@@ -27,7 +32,7 @@ export default function ImageCard({ imageUrl, accountName, source, postedAt, cap
           src={imageUrl}
           alt={captionAi ?? accountName}
           className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
-          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+          onError={() => setImgError(true)}
         />
         {/* 소스 뱃지 */}
         <span className="absolute left-2 top-2 rounded-full bg-white/80 px-2.5 py-1 text-[10px] font-medium text-brown-600 backdrop-blur-sm">
