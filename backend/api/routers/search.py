@@ -1,6 +1,7 @@
 import os
+import base64
 import anthropic
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, UploadFile, File
 from sentence_transformers import SentenceTransformer
 
 from db.database import search_fashion_posts, get_fashion_accounts
@@ -30,6 +31,43 @@ def expand_query(q: str) -> tuple[str, list[str]]:
         return expanded, keywords
     except Exception:
         return q, [q]
+
+
+@router.post("/image")
+async def search_by_image(file: UploadFile = File(...)):
+    content = await file.read()
+    media_type = file.content_type or "image/jpeg"
+    b64 = base64.b64encode(content).decode("utf-8")
+
+    client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
+    res = client.messages.create(
+        model="claude-haiku-4-5-20251001",
+        max_tokens=300,
+        messages=[{"role": "user", "content": [
+            {"type": "image", "source": {"type": "base64", "media_type": media_type, "data": b64}},
+            {"type": "text", "text": "이 패션 이미지를 분석하여 실루엣, 소재, 컬러, 스타일, 아이템을 포함해 한국어로 간결하게 설명해줘. 3문장 이내. 마크다운 기호나 특수문자 없이 일반 텍스트로만 작성해줘."},
+        ]}]
+    )
+    caption = res.content[0].text.strip()
+    query_embedding = get_model().encode(caption).tolist()
+    results = search_fashion_posts(query_embedding, days=0, limit=50)
+
+    return {
+        "caption": caption,
+        "total": len(results),
+        "results": [
+            {
+                "id": r["id"],
+                "image_url": r["image_url"],
+                "account_name": r["account_name"],
+                "source": r["source"],
+                "posted_at": str(r["posted_at"]) if r["posted_at"] else None,
+                "caption_ai": r["caption_ai"],
+                "similarity": round(float(r["similarity"]), 4),
+            }
+            for r in results
+        ],
+    }
 
 
 @router.get("/accounts")

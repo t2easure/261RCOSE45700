@@ -54,6 +54,11 @@ export default function Home() {
   const [searchQuery, setSearchQuery] = useState('')
   const [expandedKeywords, setExpandedKeywords] = useState<string[]>([])
 
+  // 이미지 검색
+  const [imageCaption, setImageCaption] = useState<string | null>(null)
+  const [imagePreview, setImagePreview] = useState<string | null>(null)
+  const [imageSearchLoading, setImageSearchLoading] = useState(false)
+
   // 검색 필터
   const [searchDays, setSearchDays] = useState(60)
   const [searchSources, setSearchSources] = useState<string[]>([])
@@ -181,6 +186,23 @@ export default function Home() {
     if (searchQuery) doSearch(searchQuery, searchDays, searchSources, searchAccounts)
   }, [searchSources, searchAccounts, searchDays])
 
+
+  async function handleImageSearch(file: File) {
+    setImageSearchLoading(true)
+    setImagePreview(URL.createObjectURL(file))
+    setSearchQuery('')
+    setTab('search')
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      const res = await fetch('/api/search/image', { method: 'POST', body: formData })
+      if (res.ok) {
+        const data = await res.json()
+        setImageCaption(data.caption ?? null)
+        setSearchResults(data.results ?? [])
+      }
+    } catch {} finally { setImageSearchLoading(false) }
+  }
 
   async function handleGenerateReport(confirmedDays?: number) {
     const days = confirmedDays ?? reportDays
@@ -320,8 +342,22 @@ export default function Home() {
             </p>
           </div>
 
-          <div className="rounded-2xl bg-white p-6 shadow-sm">
+          <div className="rounded-2xl bg-white p-6 shadow-sm space-y-4">
             <SearchBar onSearch={handleSearch} loading={searchLoading} days={searchDays} />
+            <div className="flex items-center gap-3">
+              <div className="h-px flex-1 bg-brown-100" />
+              <span className="text-xs text-brown-300">또는 이미지로 검색</span>
+              <div className="h-px flex-1 bg-brown-100" />
+            </div>
+            <label className={`flex cursor-pointer items-center justify-center gap-2 rounded-xl border-2 border-dashed border-brown-200 py-4 text-sm text-brown-400 transition hover:border-brown-400 hover:text-brown-600 ${imageSearchLoading ? 'opacity-50 pointer-events-none' : ''}`}>
+              <input
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={e => { if (e.target.files?.[0]) handleImageSearch(e.target.files[0]) }}
+              />
+              {imageSearchLoading ? '이미지 분석 중...' : '📷 이미지 업로드'}
+            </label>
           </div>
 
           {/* 필터 패널 */}
@@ -418,6 +454,33 @@ export default function Home() {
               </button>
             )}
           </div>
+
+          {imagePreview && (
+            <div className="space-y-5">
+              <div className="flex items-start gap-4 rounded-2xl bg-white p-5 shadow-sm">
+                <img src={imagePreview} className="h-28 w-20 rounded-xl object-cover shrink-0" />
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-brown-500">업로드한 이미지 분석 결과</p>
+                  {imageCaption && <p className="text-sm text-brown-700 leading-6">{imageCaption}</p>}
+                  <p className="text-xs text-brown-400">{searchResults.length}개 유사 이미지</p>
+                  <button onClick={() => { setImagePreview(null); setImageCaption(null); setSearchResults([]) }} className="text-xs text-brown-300 hover:text-brown-500">초기화</button>
+                </div>
+              </div>
+              {imageSearchLoading ? (
+                <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+                  {Array.from({ length: 10 }).map((_, i) => (
+                    <div key={i} className="aspect-[3/4] animate-pulse rounded-2xl bg-brown-100" />
+                  ))}
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+                  {searchResults.map((r) => (
+                    <ImageCard key={r.id} imageUrl={r.image_url} accountName={r.account_name} source={r.source} postedAt={r.posted_at} captionAi={r.caption_ai} similarity={r.similarity} />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           {searchQuery && (
             <div>
