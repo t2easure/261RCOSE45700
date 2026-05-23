@@ -35,9 +35,11 @@ H&M·유니클로 등 SPA 브랜드 공식 사이트와 한국 인플루언서 I
 | **벡터 기반 대표 이미지** | 트렌드 리포트 대표 이미지를 Claude 선택이 아닌 트렌드 제목 pgvector 유사도 검색으로 자동 매칭 |
 | **자연어 검색** | 키워드뿐 아니라 자연어 쿼리 입력 가능, Claude Haiku가 패션 키워드로 자동 확장 |
 | **멀티 키워드 검색** | 검색창 하단 키워드 태그 복수 선택 시 조합 검색 (예: 미니멀 + 캐주얼 + 화이트) |
+| **이미지 검색** | 이미지 업로드 시 Claude Vision 분석 후 유사 스타일 이미지 자동 검색 |
 | **멀티 필터링** | 소스(Instagram/Lookbook), 기간, 계정을 복수 조건으로 검색 결과 필터링 |
 | **리포트 기간 필터** | 리포트 생성 시 분석 기간 선택 (1일~전체), 해당 기간 포스트 수 실시간 확인 및 데이터 부족 경고 |
 | **여성 패션 자동 필터링** | 캡셔닝 시 Claude가 남성복·아동복·패션 무관 이미지 판별 후 자동 삭제 |
+| **수집 대상 관리** | MD가 대시보드에서 Instagram 계정·브랜드 URL 직접 추가·삭제 (Manage 탭) |
 
 ---
 
@@ -156,8 +158,9 @@ CRAI/
 │   ├── api/
 │   │   ├── main.py               # FastAPI 앱 (CORS, 라우터, /stats, /posts)
 │   │   └── routers/
-│   │       ├── search.py         # GET /search — 벡터 유사도 검색
+│   │       ├── search.py         # GET /search, POST /search/image — 하이브리드·이미지 검색
 │   │       ├── fashion_reports.py # GET/POST /fashion-reports
+│   │       ├── config_manager.py  # GET/POST/DELETE /config/* — 수집 대상 관리
 │   │       └── pipeline.py       # GET|POST /pipeline/* — 파이프라인 트리거·상태
 │   ├── crawlers/
 │   │   ├── instagram_collector.py # Instaloader, 세션 인증, 인플루언서 60일 룩백
@@ -241,8 +244,15 @@ CRAI/
 | GET | `/stats` | 수집 통계 (전체·소스별) |
 | GET | `/posts?source=&limit=&offset=` | 전체 이미지 목록 (caption_meta 포함) |
 | GET | `/search?q=키워드&days=60&sources=instagram,lookbook&accounts=계정명` | 하이브리드 검색 (벡터 70% + 키워드 30%) + Claude 쿼리 확장 + 멀티 필터 |
+| POST | `/search/image` | 이미지 업로드 → Claude Vision 분석 → 유사 이미지 검색 |
 | GET | `/search/accounts` | 수집된 계정 목록 조회 |
 | GET | `/fashion-reports/count?days=30` | 기간별 캡셔닝 완료 포스트 수 조회 |
+| GET | `/config/instagram` | Instagram 수집 계정 목록 조회 |
+| POST | `/config/instagram` | Instagram 계정 추가 |
+| DELETE | `/config/instagram/{type}/{username}` | Instagram 계정 삭제 |
+| GET | `/config/brands` | 브랜드 URL 목록 조회 |
+| POST | `/config/brands` | 브랜드 URL 추가 |
+| DELETE | `/config/brands/{key}` | 브랜드 URL 삭제 |
 | GET | `/fashion-reports` | 트렌드 리포트 목록 |
 | GET | `/fashion-reports/{id}` | 트렌드 리포트 상세 |
 | GET | `/fashion-reports/generate/status` | 리포트 생성 진행 상태 |
@@ -277,8 +287,10 @@ CRAI/
 - 여성 패션 자동 필터링 — 캡셔닝 시 남성복·무관 이미지 자동 삭제
 - 동적 키워드 태그 — caption_meta 빈도 기반 상위 키워드를 DB에서 실시간 추출해 검색창 하단에 표시
 - 벡터 기반 대표 이미지 매칭 — 트렌드 제목을 벡터화해 pgvector로 가장 유사한 이미지 자동 선정
-- FastAPI — 전체 이미지·검색·통계·리포트·파이프라인 트리거·크롤링·로그·키워드·ID조회 엔드포인트
-- Next.js 대시보드 — Trends(대시보드), Search, Reports, Data 탭
+- 이미지 업로드 검색 — Claude Vision 분석 후 유사 스타일 이미지 검색
+- 수집 대상 관리 메뉴 — Manage 탭에서 Instagram 계정·브랜드 URL 추가·삭제
+- FastAPI — 전체 이미지·검색·이미지검색·통계·리포트·파이프라인·크롤링·설정 엔드포인트
+- Next.js 대시보드 — Trends, Search, Reports, Data, Manage 탭
 - 이미지 카드 hover 시 전체 캡션 오버레이 표시
 
 ---
