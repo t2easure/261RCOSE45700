@@ -25,7 +25,7 @@ H&M·유니클로 등 SPA 브랜드 공식 사이트와 한국 인플루언서 I
 | **멀티소스 수집** | Instagram 한국 인플루언서 (Instaloader) + H&M·유니클로·ZARA·탑텐·스파오 브랜드 룩북 (Playwright) |
 | **Claude Vision 캡셔닝** | 실루엣·소재·컬러·스타일 속성을 한국어 전문 용어로 캡셔닝 (`caption_ai`), 패션 아닌 이미지 자동 삭제 |
 | **2차 메타 캡셔닝** | 전문용어 캡션을 일반화 키워드 5~8개로 압축 (`caption_meta`) |
-| **시맨틱 검색** | `paraphrase-multilingual-MiniLM-L12-v2` 384차원 벡터 + pgvector 유사도 검색 + Claude 쿼리 확장 |
+| **하이브리드 검색** | 벡터 유사도(70%) + 키워드 매칭(30%) 결합, Claude 쿼리 확장으로 검색 품질 향상 |
 | **LangGraph 에이전트** | Scout → Couture MD (Planner+Writer) → Critic 자동화 파이프라인, DB 저장 |
 | **Self-Correction** | Critic 노드: 데이터 부족·JSON 파싱 실패 시 Couture MD로 자동 재시도 (최대 3회) |
 | **Next.js 대시보드** | 시맨틱 검색, 트렌드 리포트 조회, 전체 이미지 브라우징 UI |
@@ -240,7 +240,7 @@ CRAI/
 |--------|------|------|
 | GET | `/stats` | 수집 통계 (전체·소스별) |
 | GET | `/posts?source=&limit=&offset=` | 전체 이미지 목록 (caption_meta 포함) |
-| GET | `/search?q=키워드&days=60&sources=instagram,lookbook&accounts=계정명` | 벡터 유사도 검색 + Claude 쿼리 확장 + 멀티 필터 |
+| GET | `/search?q=키워드&days=60&sources=instagram,lookbook&accounts=계정명` | 하이브리드 검색 (벡터 70% + 키워드 30%) + Claude 쿼리 확장 + 멀티 필터 |
 | GET | `/search/accounts` | 수집된 계정 목록 조회 |
 | GET | `/fashion-reports/count?days=30` | 기간별 캡셔닝 완료 포스트 수 조회 |
 | GET | `/fashion-reports` | 트렌드 리포트 목록 |
@@ -271,7 +271,7 @@ CRAI/
 - LangGraph 파이프라인 — Scout → Couture MD (Planner+Writer) → Critic 노드 + DB 저장
 - Critic 노드 — 트렌드 5개 완비·summary 유무 검증, 실패 시 Couture MD 재시도 (최대 3회)
 - 크롤링 원클릭 파이프라인 — 버튼 클릭 → 수집 → 1차·2차 캡셔닝 → 임베딩 자동 순차 실행, since 필터로 새 데이터만 처리
-- Claude 쿼리 확장 — 검색어를 패션 키워드로 확장하여 시맨틱 검색 품질 향상
+- 하이브리드 검색 — 벡터 유사도(70%) + 키워드 매칭(30%) 결합, Claude 쿼리 확장 적용
 - 멀티 키워드 검색 — 검색창 하단 키워드 태그 복수 선택 후 조합 검색
 - 멀티 필터링 — 소스·기간·계정 복수 조건 필터 (검색 탭)
 - 여성 패션 자동 필터링 — 캡셔닝 시 남성복·무관 이미지 자동 삭제

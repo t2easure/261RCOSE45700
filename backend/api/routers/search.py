@@ -54,6 +54,7 @@ def search(
     results = search_fashion_posts(
         query_embedding, days=days, limit=limit,
         sources=sources_list, accounts=accounts_list,
+        keywords=keywords,
     )
 
     return {

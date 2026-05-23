@@ -265,36 +265,58 @@ def search_fashion_posts(
     limit: int = 20,
     sources: list[str] | None = None,
     accounts: list[str] | None = None,
+    keywords: list[str] | None = None,
 ) -> list[dict]:
-    """벡터 유사도 기반 패션 이미지 검색."""
+    """하이브리드(벡터 + 키워드) 패션 이미지 검색."""
     conditions = ["embedding IS NOT NULL"]
-    params: list[Any] = [query_embedding]
+    filter_params: list[Any] = []
 
     if days > 0:
         conditions.append("posted_at >= NOW() - (%s || ' days')::interval")
-        params.append(str(days))
+        filter_params.append(str(days))
     if sources:
         conditions.append("source = ANY(%s)")
-        params.append(sources)
+        filter_params.append(sources)
     if accounts:
         conditions.append("account_name = ANY(%s)")
-        params.append(accounts)
+        filter_params.append(accounts)
 
     where = "WHERE " + " AND ".join(conditions)
 
-    with _get_connection() as conn:
-        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute(
-                f"""
+    if keywords:
+        kw_cases = " + ".join(
+            "CASE WHEN lower(caption_ai) LIKE lower(%s) THEN 1 ELSE 0 END"
+            for _ in keywords
+        )
+        kw_params = [f"%{kw}%" for kw in keywords]
+        score_expr = f"(1 - (embedding <=> %s::vector)) * 0.7 + ({kw_cases})::float / {len(keywords)} * 0.3"
+        sql = f"""
+            SELECT * FROM (
+                SELECT id, image_url, account_name, source, posted_at, caption_ai, caption_meta,
+                       {score_expr} AS similarity
+                FROM fashion_posts
+                {where}
+            ) sub
+            ORDER BY similarity DESC
+            LIMIT %s
+        """
+        exec_params = [query_embedding] + kw_params + filter_params + [limit]
+    else:
+        sql = f"""
+            SELECT * FROM (
                 SELECT id, image_url, account_name, source, posted_at, caption_ai, caption_meta,
                        1 - (embedding <=> %s::vector) AS similarity
                 FROM fashion_posts
                 {where}
-                ORDER BY embedding <=> %s::vector
-                LIMIT %s
-                """,
-                params + [query_embedding, limit],
-            )
+            ) sub
+            ORDER BY similarity DESC
+            LIMIT %s
+        """
+        exec_params = [query_embedding] + filter_params + [limit]
+
+    with _get_connection() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(sql, exec_params)
             return [dict(row) for row in cur.fetchall()]
 
 
