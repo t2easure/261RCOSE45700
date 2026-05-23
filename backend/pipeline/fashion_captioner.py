@@ -56,9 +56,9 @@ async def process_post(ant_client, http_client, post, semaphore):
             tqdm.write(f"❌ ID #{post['id']} 실패: {e}")
             return False
 
-async def run_captioning(batch_size: int = 50):
+async def run_captioning(batch_size: int = 50, per_account: int = 50, since: str = None):
     ant_client = anthropic.AsyncAnthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
-    posts = get_uncaptioned_posts(limit=batch_size)
+    posts = get_uncaptioned_posts(limit=batch_size, per_account=per_account, since=since)
     
     if not posts:
         print("✨ 분석할 이미지가 없습니다.")

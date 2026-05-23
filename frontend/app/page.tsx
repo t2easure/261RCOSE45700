@@ -87,6 +87,7 @@ export default function Home() {
   const [allPostsLoading, setAllPostsLoading] = useState(false)
   const [dataSource, setDataSource] = useState<'all' | 'instagram' | 'lookbook'>('all')
   const [dataOffset, setDataOffset] = useState(0)
+  const [hasMore, setHasMore] = useState(true)
   const DATA_LIMIT = 40
 
   // 관리 탭
@@ -132,6 +133,7 @@ export default function Home() {
         const data = await res.json()
         const items: Post[] = data.items ?? data
         setAllPosts(prev => append ? [...prev, ...items] : items)
+        setHasMore(items.length === DATA_LIMIT)
       }
     } catch {} finally { setAllPostsLoading(false) }
   }, [])
@@ -144,7 +146,7 @@ export default function Home() {
     }
   }, [tab])
   useEffect(() => {
-    if (tab === 'data') { setDataOffset(0); fetchAllPosts(dataSource, 0) }
+    if (tab === 'data') { setDataOffset(0); setHasMore(true); fetchAllPosts(dataSource, 0) }
   }, [tab, dataSource, fetchAllPosts])
 
   useEffect(() => {
@@ -720,15 +722,17 @@ export default function Home() {
                   />
                 ))}
               </div>
-              <div className="flex justify-center pt-4">
-                <button
-                  onClick={handleLoadMore}
-                  disabled={allPostsLoading}
-                  className="rounded-xl border border-brown-200 bg-white px-8 py-3 text-sm text-brown-600 transition hover:border-brown-400 disabled:opacity-40"
-                >
-                  {allPostsLoading ? '불러오는 중...' : '더 보기'}
-                </button>
-              </div>
+              {hasMore && (
+                <div className="flex justify-center pt-4">
+                  <button
+                    onClick={handleLoadMore}
+                    disabled={allPostsLoading}
+                    className="rounded-xl border border-brown-200 bg-white px-8 py-3 text-sm text-brown-600 transition hover:border-brown-400 disabled:opacity-40"
+                  >
+                    {allPostsLoading ? '불러오는 중...' : '더 보기'}
+                  </button>
+                </div>
+              )}
             </>
           )}
         </div>

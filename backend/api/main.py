@@ -4,6 +4,7 @@ load_dotenv(Path(__file__).parent.parent.parent / '.env')
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from db.database import init_db, get_fashion_posts_all, get_fashion_stats, _get_connection
 from api.routers import search, fashion_reports, pipeline, crawl, config_manager
@@ -16,6 +17,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+IMAGES_DIR = Path(__file__).parent.parent / "data" / "images"
+IMAGES_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/images", StaticFiles(directory=str(IMAGES_DIR)), name="images")
 
 
 @app.on_event("startup")
