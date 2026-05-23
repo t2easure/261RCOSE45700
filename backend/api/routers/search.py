@@ -3,7 +3,7 @@ import anthropic
 from fastapi import APIRouter, Query
 from sentence_transformers import SentenceTransformer
 
-from db.database import search_fashion_posts
+from db.database import search_fashion_posts, get_fashion_accounts
 
 router = APIRouter(prefix="/search", tags=["search"])
 
@@ -32,15 +32,29 @@ def expand_query(q: str) -> tuple[str, list[str]]:
         return q, [q]
 
 
+@router.get("/accounts")
+def list_accounts():
+    return get_fashion_accounts()
+
+
 @router.get("")
 def search(
     q: str = Query(..., description="패션 검색어 (자연어 가능)"),
     days: int = Query(60, description="검색 기간 (일)"),
-    limit: int = Query(20, description="결과 수"),
+    limit: int = Query(50, description="결과 수"),
+    sources: str = Query(None, description="소스 필터 (쉼표 구분, 예: instagram,lookbook)"),
+    accounts: str = Query(None, description="계정 필터 (쉼표 구분)"),
 ):
     expanded_text, keywords = expand_query(q)
     query_embedding = get_model().encode(expanded_text).tolist()
-    results = search_fashion_posts(query_embedding, days=days, limit=limit)
+
+    sources_list = [s.strip() for s in sources.split(",")] if sources else None
+    accounts_list = [a.strip() for a in accounts.split(",")] if accounts else None
+
+    results = search_fashion_posts(
+        query_embedding, days=days, limit=limit,
+        sources=sources_list, accounts=accounts_list,
+    )
 
     return {
         "query": q,

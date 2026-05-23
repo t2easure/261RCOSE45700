@@ -54,6 +54,13 @@ export default function Home() {
   const [searchQuery, setSearchQuery] = useState('')
   const [expandedKeywords, setExpandedKeywords] = useState<string[]>([])
 
+  // 검색 필터
+  const [searchDays, setSearchDays] = useState(60)
+  const [searchSources, setSearchSources] = useState<string[]>([])
+  const [searchAccounts, setSearchAccounts] = useState<string[]>([])
+  const [availableAccounts, setAvailableAccounts] = useState<string[]>([])
+  const [showAccountDropdown, setShowAccountDropdown] = useState(false)
+
   // 리포트
   const [reports, setReports] = useState<FashionReport[]>([])
   const [reportsLoading, setReportsLoading] = useState(false)
@@ -119,6 +126,11 @@ export default function Home() {
   useEffect(() => { fetchStats(); fetchRecentPosts() }, [fetchStats, fetchRecentPosts])
   useEffect(() => { if (tab === 'reports') fetchReports() }, [tab, fetchReports])
   useEffect(() => {
+    if (tab === 'search' && availableAccounts.length === 0) {
+      fetch('/api/search/accounts').then(r => r.json()).then(setAvailableAccounts).catch(() => {})
+    }
+  }, [tab])
+  useEffect(() => {
     if (tab === 'data') { setDataOffset(0); fetchAllPosts(dataSource, 0) }
   }, [tab, dataSource, fetchAllPosts])
   useEffect(() => {
@@ -129,12 +141,13 @@ export default function Home() {
       .catch(() => {})
   }, [tab, reportDays])
 
-  async function handleSearch(query: string, days: number) {
+  async function doSearch(query: string, days: number, sources: string[], accounts: string[]) {
     setSearchLoading(true)
-    setSearchQuery(query)
-    setTab('search')
     try {
-      const res = await fetch(`/api/search?q=${encodeURIComponent(query)}&days=${days}`)
+      const params = new URLSearchParams({ q: query, days: String(days) })
+      if (sources.length > 0) params.set('sources', sources.join(','))
+      if (accounts.length > 0) params.set('accounts', accounts.join(','))
+      const res = await fetch(`/api/search?${params}`)
       if (res.ok) {
         const data = await res.json()
         setSearchResults(data.results ?? [])
@@ -142,6 +155,18 @@ export default function Home() {
       }
     } catch {} finally { setSearchLoading(false) }
   }
+
+  async function handleSearch(query: string, days: number) {
+    setSearchQuery(query)
+    setSearchDays(days)
+    setTab('search')
+    await doSearch(query, days, searchSources, searchAccounts)
+  }
+
+  useEffect(() => {
+    if (searchQuery) doSearch(searchQuery, searchDays, searchSources, searchAccounts)
+  }, [searchSources, searchAccounts, searchDays])
+
 
   async function handleGenerateReport(confirmedDays?: number) {
     const days = confirmedDays ?? reportDays
@@ -282,7 +307,102 @@ export default function Home() {
           </div>
 
           <div className="rounded-2xl bg-white p-6 shadow-sm">
-            <SearchBar onSearch={handleSearch} loading={searchLoading} />
+            <SearchBar onSearch={handleSearch} loading={searchLoading} days={searchDays} />
+          </div>
+
+          {/* 필터 패널 */}
+          <div className="flex flex-wrap items-center gap-4 rounded-2xl bg-white px-5 py-4 shadow-sm">
+            {/* 소스 */}
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-brown-400 shrink-0">소스</span>
+              <div className="flex gap-1">
+                {(['instagram', 'lookbook'] as const).map((s) => {
+                  const active = searchSources.includes(s)
+                  return (
+                    <button
+                      key={s}
+                      onClick={() => setSearchSources(prev =>
+                        active ? prev.filter(x => x !== s) : [...prev, s]
+                      )}
+                      className={`rounded-full px-3 py-1 text-xs font-medium transition ${
+                        active
+                          ? 'bg-brown-600 text-cream-50'
+                          : 'bg-brown-100 text-brown-500 hover:bg-brown-200'
+                      }`}
+                    >
+                      {s === 'instagram' ? 'Instagram' : 'Lookbook'}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+
+            <div className="h-4 w-px bg-brown-200" />
+
+            {/* 기간 */}
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-brown-400 shrink-0">기간</span>
+              <select
+                value={searchDays}
+                onChange={e => setSearchDays(Number(e.target.value))}
+                className="rounded-lg border border-brown-200 bg-white px-2 py-1 text-xs text-brown-600 outline-none focus:border-brown-400"
+              >
+                <option value={7}>최근 1주</option>
+                <option value={14}>최근 2주</option>
+                <option value={30}>최근 1달</option>
+                <option value={60}>최근 2달</option>
+                <option value={90}>최근 3달</option>
+                <option value={0}>전체</option>
+              </select>
+            </div>
+
+            <div className="h-4 w-px bg-brown-200" />
+
+            {/* 계정 */}
+            <div className="relative flex items-center gap-2">
+              <span className="text-xs text-brown-400 shrink-0">계정</span>
+              <button
+                onClick={() => setShowAccountDropdown(p => !p)}
+                className="rounded-lg border border-brown-200 bg-white px-3 py-1 text-xs text-brown-600 hover:border-brown-400 transition"
+              >
+                {searchAccounts.length === 0 ? '전체' : `${searchAccounts.length}개 선택`} ▾
+              </button>
+              {showAccountDropdown && availableAccounts.length > 0 && (
+                <>
+                  <div className="fixed inset-0 z-10" onClick={() => setShowAccountDropdown(false)} />
+                  <div className="absolute left-0 top-8 z-20 max-h-52 w-48 overflow-y-auto rounded-xl border border-brown-100 bg-white shadow-lg">
+                  <button
+                    onClick={() => setSearchAccounts([])}
+                    className="w-full px-4 py-2 text-left text-xs text-brown-500 hover:bg-brown-50"
+                  >
+                    전체 선택 해제
+                  </button>
+                  {availableAccounts.map((acc) => (
+                    <label key={acc} className="flex cursor-pointer items-center gap-2 px-4 py-2 text-xs text-brown-700 hover:bg-brown-50">
+                      <input
+                        type="checkbox"
+                        checked={searchAccounts.includes(acc)}
+                        onChange={() => setSearchAccounts(prev =>
+                          prev.includes(acc) ? prev.filter(x => x !== acc) : [...prev, acc]
+                        )}
+                        className="accent-brown-600"
+                      />
+                      @{acc}
+                    </label>
+                  ))}
+                </div>
+                </>
+              )}
+            </div>
+
+            {(searchSources.length > 0 || searchAccounts.length > 0 || searchDays !== 60) && (
+              <button
+                onClick={() => { setSearchSources([]); setSearchAccounts([]); setSearchDays(60) }}
+                className="ml-auto text-xs text-brown-400 hover:text-brown-600 transition"
+              >
+                필터 초기화
+              </button>
+            )}
           </div>
 
           {searchQuery && (
@@ -291,14 +411,6 @@ export default function Home() {
                 <p className="text-sm text-brown-500">
                   <span className="font-semibold text-brown-800">"{searchQuery}"</span> — {searchResults.length}개 결과
                 </p>
-                {expandedKeywords.length > 0 && (
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-xs text-brown-400">검색 키워드:</span>
-                    {expandedKeywords.map((kw) => (
-                      <span key={kw} className="rounded-full bg-brown-100 px-2.5 py-1 text-xs text-brown-600">{kw}</span>
-                    ))}
-                  </div>
-                )}
               </div>
 
               {searchLoading ? (
