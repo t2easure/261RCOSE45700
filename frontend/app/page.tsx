@@ -84,6 +84,14 @@ export default function Home() {
   const [dataOffset, setDataOffset] = useState(0)
   const DATA_LIMIT = 40
 
+  // 관리 탭
+  const [instagramConfig, setInstagramConfig] = useState<{ brands: string[]; influencers: string[] } | null>(null)
+  const [brandConfig, setBrandConfig] = useState<Record<string, string> | null>(null)
+  const [newAccount, setNewAccount] = useState('')
+  const [newAccountType, setNewAccountType] = useState<'brands' | 'influencers'>('influencers')
+  const [newBrandKey, setNewBrandKey] = useState('')
+  const [newBrandUrl, setNewBrandUrl] = useState('')
+
   const fetchStats = useCallback(async () => {
     try {
       const res = await fetch('/api/stats')
@@ -133,6 +141,12 @@ export default function Home() {
   useEffect(() => {
     if (tab === 'data') { setDataOffset(0); fetchAllPosts(dataSource, 0) }
   }, [tab, dataSource, fetchAllPosts])
+
+  useEffect(() => {
+    if (tab !== 'manage') return
+    fetch('/api/config/instagram').then(r => r.json()).then(setInstagramConfig).catch(() => {})
+    fetch('/api/config/brands').then(r => r.json()).then(setBrandConfig).catch(() => {})
+  }, [tab])
   useEffect(() => {
     if (tab !== 'reports') return
     fetch(`/api/fashion-reports/count?days=${reportDays}`)
@@ -654,6 +668,125 @@ export default function Home() {
               </div>
             </>
           )}
+        </div>
+      )}
+
+      {/* ── 관리 ── */}
+      {tab === 'manage' && (
+        <div className="mx-auto max-w-5xl px-8 py-10 space-y-10">
+          <div>
+            <h2 className="font-serif text-4xl font-bold uppercase tracking-wide text-brown-700">Manage</h2>
+            <p className="mt-2 text-sm text-brown-400">수집 대상 계정 및 브랜드 URL 관리</p>
+          </div>
+
+          {/* Instagram 계정 */}
+          <div className="rounded-2xl bg-white p-6 shadow-sm space-y-6">
+            <h3 className="font-serif text-xl font-bold text-brown-700">Instagram 계정</h3>
+
+            {(['influencers', 'brands'] as const).map((type) => (
+              <div key={type} className="space-y-3">
+                <p className="text-sm font-medium text-brown-600">{type === 'influencers' ? '인플루언서' : '브랜드'}</p>
+                <div className="flex flex-wrap gap-2">
+                  {instagramConfig?.[type].map((acc) => (
+                    <span key={acc} className="flex items-center gap-1 rounded-full bg-brown-100 px-3 py-1 text-xs text-brown-700">
+                      @{acc}
+                      <button
+                        onClick={async () => {
+                          await fetch(`/api/config/instagram/${type}/${acc}`, { method: 'DELETE' })
+                          fetch('/api/config/instagram').then(r => r.json()).then(setInstagramConfig)
+                        }}
+                        className="ml-1 text-brown-400 hover:text-red-500"
+                      >×</button>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ))}
+
+            <div className="flex gap-2 items-center pt-2 border-t border-brown-100">
+              <select
+                value={newAccountType}
+                onChange={e => setNewAccountType(e.target.value as 'brands' | 'influencers')}
+                className="rounded-lg border border-brown-200 px-3 py-2 text-xs text-brown-600 outline-none"
+              >
+                <option value="influencers">인플루언서</option>
+                <option value="brands">브랜드</option>
+              </select>
+              <input
+                value={newAccount}
+                onChange={e => setNewAccount(e.target.value)}
+                placeholder="계정명 (@ 제외)"
+                className="flex-1 rounded-lg border border-brown-200 px-3 py-2 text-xs text-brown-700 outline-none focus:border-brown-400"
+              />
+              <button
+                onClick={async () => {
+                  if (!newAccount.trim()) return
+                  await fetch('/api/config/instagram', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username: newAccount.trim(), type: newAccountType }),
+                  })
+                  setNewAccount('')
+                  fetch('/api/config/instagram').then(r => r.json()).then(setInstagramConfig)
+                }}
+                className="rounded-lg bg-brown-600 px-4 py-2 text-xs font-medium text-cream-50 hover:bg-brown-700"
+              >
+                추가
+              </button>
+            </div>
+          </div>
+
+          {/* 브랜드 URL */}
+          <div className="rounded-2xl bg-white p-6 shadow-sm space-y-4">
+            <h3 className="font-serif text-xl font-bold text-brown-700">브랜드 URL</h3>
+
+            <div className="space-y-2">
+              {brandConfig && Object.entries(brandConfig).map(([key, url]) => (
+                <div key={key} className="flex items-center gap-3 rounded-xl bg-brown-50 px-4 py-3">
+                  <span className="w-32 shrink-0 text-xs font-medium text-brown-700">{key}</span>
+                  <span className="flex-1 truncate text-xs text-brown-400">{url}</span>
+                  <button
+                    onClick={async () => {
+                      await fetch(`/api/config/brands/${key}`, { method: 'DELETE' })
+                      fetch('/api/config/brands').then(r => r.json()).then(setBrandConfig)
+                    }}
+                    className="text-brown-300 hover:text-red-500 transition"
+                  >×</button>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex gap-2 items-center pt-2 border-t border-brown-100">
+              <input
+                value={newBrandKey}
+                onChange={e => setNewBrandKey(e.target.value)}
+                placeholder="키 (예: musinsa_women)"
+                className="w-40 rounded-lg border border-brown-200 px-3 py-2 text-xs text-brown-700 outline-none focus:border-brown-400"
+              />
+              <input
+                value={newBrandUrl}
+                onChange={e => setNewBrandUrl(e.target.value)}
+                placeholder="URL"
+                className="flex-1 rounded-lg border border-brown-200 px-3 py-2 text-xs text-brown-700 outline-none focus:border-brown-400"
+              />
+              <button
+                onClick={async () => {
+                  if (!newBrandKey.trim() || !newBrandUrl.trim()) return
+                  await fetch('/api/config/brands', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ key: newBrandKey.trim(), url: newBrandUrl.trim() }),
+                  })
+                  setNewBrandKey('')
+                  setNewBrandUrl('')
+                  fetch('/api/config/brands').then(r => r.json()).then(setBrandConfig)
+                }}
+                className="rounded-lg bg-brown-600 px-4 py-2 text-xs font-medium text-cream-50 hover:bg-brown-700"
+              >
+                추가
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
