@@ -6,7 +6,7 @@ const nextConfig = {
     return [
       {
         source: '/images/:path*',
-        destination: 'http://localhost:8001/images/:path*',
+        destination: 'http://13.223.75.247:8001/images/:path*',
       },
     ]
   },

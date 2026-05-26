@@ -3,8 +3,31 @@ import json
 import re
 import sys
 import io
+import hashlib
+import httpx
 from pathlib import Path
 from datetime import datetime, timezone
+
+DATA_DIR = Path(__file__).parent.parent / "data" / "images"
+
+
+def download_image(url: str, brand: str) -> str:
+    """이미지 다운로드 후 로컬 경로 반환. 실패 시 원본 URL 반환."""
+    try:
+        h = hashlib.md5(url.encode()).hexdigest()
+        save_dir = DATA_DIR / brand
+        save_dir.mkdir(parents=True, exist_ok=True)
+        save_path = save_dir / f"{h}.jpg"
+        if save_path.exists():
+            return f"/images/{brand}/{h}.jpg"
+        with httpx.Client(timeout=10, follow_redirects=True) as client:
+            r = client.get(url, headers={"User-Agent": "Mozilla/5.0"})
+            if r.status_code == 200 and len(r.content) > 1000:
+                save_path.write_bytes(r.content)
+                return f"/images/{brand}/{h}.jpg"
+    except Exception:
+        pass
+    return url
 
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace', line_buffering=True)
 sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace', line_buffering=True)
@@ -248,11 +271,12 @@ async def scrape_brand(brand: str, url: str) -> list[dict]:
                     seen_urls_global.add(norm)
                     page_post_count += 1
 
+                    local_url = download_image(norm, brand)
                     posts.append({
                         "source": "lookbook",
                         "account_name": brand,
                         "post_url": f"{page.url}#{hash(norm) % 999999}",
-                        "image_url": norm,
+                        "image_url": local_url,
                         "caption": "",
                         "likes": None,
                         "posted_at": now,
