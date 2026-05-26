@@ -17,7 +17,6 @@ load_dotenv(Path(__file__).parent.parent.parent / ".env")
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from db.database import save_fashion_posts, log_crawl
-from utils.image_downloader import download_images
 
 URLS_PATH = Path(__file__).parent.parent.parent / "config" / "brand_urls.json"
 
@@ -156,7 +155,7 @@ async def scrape_brand(brand: str, url: str) -> list[dict]:
                     pass
 
             current_page = 1
-            max_pages = 16  # 최대 수집할 페이지 수 설정 (끝까지 가려면 아주 큰 숫자로 둬도 됩니다)
+            max_pages = 1000
             seen_urls_global = set() # 전체 페이지에 걸쳐 중복 수집을 막기 위한 세트
 
             while current_page <= max_pages:
@@ -348,7 +347,6 @@ async def run_brand_scraper(_status_callback=None) -> int:
             _status_callback("running", f"브랜드 스크래핑 중: {brand}")
         posts = await scrape_brand(brand, url)
         if posts:
-            download_images(posts)
             saved = save_fashion_posts(posts)
             log_crawl(source="lookbook", game="fashion", status="success", count=saved)
             print(f"[Brand] {brand}: {saved}개 실제 RDS 저장 완료")
