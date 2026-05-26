@@ -40,7 +40,7 @@ def run_crawl(background_tasks: BackgroundTasks):
             result = []
             def _scrape():
                 import asyncio
-                loop = asyncio.ProactorEventLoop()
+                loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
                 loop.run_until_complete(run_brand_scraper(_status_callback=_set))
                 loop.close()
