@@ -1,11 +1,16 @@
 import psycopg2.extras
 from fastapi import APIRouter, HTTPException, BackgroundTasks
+from pydantic import BaseModel
 
 from db.database import _get_connection, save_fashion_report
 
 router = APIRouter(prefix="/fashion-reports", tags=["fashion-reports"])
 
 _gen_status: dict = {"state": "idle", "message": ""}
+
+
+class GenerateRequest(BaseModel):
+    days: int = 30
 
 
 def _set(state: str, message: str):
@@ -36,6 +41,21 @@ def generate_status():
     return _gen_status
 
 
+@router.get("/count")
+def get_post_count(days: int = 30):
+    with _get_connection() as conn:
+        with conn.cursor() as cur:
+            if days == 0:
+                cur.execute("SELECT COUNT(*) FROM fashion_posts WHERE caption_ai IS NOT NULL")
+            else:
+                cur.execute(
+                    "SELECT COUNT(*) FROM fashion_posts WHERE caption_ai IS NOT NULL AND collected_at >= NOW() - (%s || ' days')::interval",
+                    (str(days),),
+                )
+            count = cur.fetchone()[0]
+    return {"count": count, "days": days}
+
+
 @router.get("")
 def list_reports(limit: int = 20):
     return _get_reports(limit=limit)
@@ -50,9 +70,11 @@ def get_report(report_id: int):
 
 
 @router.post("/generate")
-def generate_report(background_tasks: BackgroundTasks):
+def generate_report(req: GenerateRequest, background_tasks: BackgroundTasks):
     if _gen_status["state"] == "running":
         return {"message": "리포트 생성이 이미 진행 중입니다."}
+
+    days = req.days
 
     def _run():
         from pipeline.langgraph_pipeline import scout_node, couture_md_node, CRAIState
@@ -70,6 +92,7 @@ def generate_report(background_tasks: BackgroundTasks):
                 "validation_passed": False,
                 "report_id": None,
                 "error_messages": [],
+                "days": days,
             }
             state = scout_node(state)
             _set("running", f"Couture MD — 트렌드 분석 중... ({state['data_count']}개 포스트)")
@@ -84,6 +107,7 @@ def generate_report(background_tasks: BackgroundTasks):
                 top_keywords=state["top_keywords"],
                 style_trends=state["style_trends"],
                 post_count=len(state["posts"]),
+                days=days,
             )
             _set("idle", f"리포트 생성 완료 (id={report_id})")
         except Exception as e:

@@ -259,23 +259,75 @@ def get_fashion_stats() -> dict:
     }
 
 
-def search_fashion_posts(query_embedding: list[float], days: int = 60, limit: int = 20) -> list[dict]:
-    """벡터 유사도 기반 패션 이미지 검색."""
-    with _get_connection() as conn:
-        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute(
-                """
+def search_fashion_posts(
+    query_embedding: list[float],
+    days: int = 60,
+    limit: int = 20,
+    sources: list[str] | None = None,
+    accounts: list[str] | None = None,
+    keywords: list[str] | None = None,
+) -> list[dict]:
+    """하이브리드(벡터 + 키워드) 패션 이미지 검색."""
+    conditions = ["embedding IS NOT NULL"]
+    filter_params: list[Any] = []
+
+    if days > 0:
+        conditions.append("posted_at >= NOW() - (%s || ' days')::interval")
+        filter_params.append(str(days))
+    if sources:
+        conditions.append("source = ANY(%s)")
+        filter_params.append(sources)
+    if accounts:
+        conditions.append("account_name = ANY(%s)")
+        filter_params.append(accounts)
+
+    where = "WHERE " + " AND ".join(conditions)
+
+    if keywords:
+        kw_cases = " + ".join(
+            "CASE WHEN lower(caption_ai) LIKE lower(%s) THEN 1 ELSE 0 END"
+            for _ in keywords
+        )
+        kw_params = [f"%{kw}%" for kw in keywords]
+        score_expr = f"(1 - (embedding <=> %s::vector)) * 0.7 + ({kw_cases})::float / {len(keywords)} * 0.3"
+        sql = f"""
+            SELECT * FROM (
+                SELECT id, image_url, account_name, source, posted_at, caption_ai, caption_meta,
+                       {score_expr} AS similarity
+                FROM fashion_posts
+                {where}
+            ) sub
+            ORDER BY similarity DESC
+            LIMIT %s
+        """
+        exec_params = [query_embedding] + kw_params + filter_params + [limit]
+    else:
+        sql = f"""
+            SELECT * FROM (
                 SELECT id, image_url, account_name, source, posted_at, caption_ai, caption_meta,
                        1 - (embedding <=> %s::vector) AS similarity
                 FROM fashion_posts
-                WHERE posted_at >= NOW() - INTERVAL '%s days'
-                  AND embedding IS NOT NULL
-                ORDER BY embedding <=> %s::vector
-                LIMIT %s
-                """,
-                (query_embedding, days, query_embedding, limit),
-            )
+                {where}
+            ) sub
+            ORDER BY similarity DESC
+            LIMIT %s
+        """
+        exec_params = [query_embedding] + filter_params + [limit]
+
+    with _get_connection() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(sql, exec_params)
             return [dict(row) for row in cur.fetchall()]
+
+
+def get_fashion_accounts() -> list[str]:
+    """수집된 계정명 목록 반환."""
+    with _get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT DISTINCT account_name FROM fashion_posts WHERE account_name IS NOT NULL ORDER BY account_name LIMIT 200"
+            )
+            return [row[0] for row in cur.fetchall()]
 
 
 def save_posts(items: list[dict]) -> int:
@@ -616,11 +668,11 @@ def save_caption_meta(post_id: int, meta: str) -> None:
         conn.commit()
 
 
-def save_fashion_report(summary: str, top_keywords: list, style_trends: list, post_count: int) -> int:
+def save_fashion_report(summary: str, top_keywords: list, style_trends: list, post_count: int, days: int = 30) -> int:
     """LangGraph 파이프라인 결과를 fashion_reports 테이블에 저장. 저장된 id 반환."""
     from datetime import datetime, timezone, timedelta
     now = datetime.now(timezone.utc)
-    period_start = (now - timedelta(days=60)).strftime("%Y-%m-%d")
+    period_start = (now - timedelta(days=days)).strftime("%Y-%m-%d") if days > 0 else None
     period_end = now.strftime("%Y-%m-%d")
     with _get_connection() as conn:
         with conn.cursor() as cur:

@@ -25,7 +25,12 @@ def get_last_crawl_time() -> datetime:
                 row = cur.fetchone()
                 if row:
                     from dateutil.parser import parse
-                    return parse(str(row[0]))
+                    from datetime import timedelta
+                    KST = timezone(timedelta(hours=9))
+                    dt = parse(str(row[0]))
+                    if dt.tzinfo is None:
+                        dt = dt.replace(tzinfo=KST)
+                    return dt.astimezone(timezone.utc)
     except Exception:
         pass
     return datetime.now(timezone.utc) - timedelta(days=7)
@@ -98,4 +103,32 @@ def run_instagram_collector() -> int:
 
 
 if __name__ == "__main__":
-    run_instagram_collector()
+    import sys
+    if len(sys.argv) > 1:
+        from dateutil.parser import parse as parse_date
+        override = parse_date(sys.argv[1]).replace(tzinfo=timezone.utc)
+        print(f"[Instagram] 날짜 오버라이드: {override}")
+        brands, influencers = load_accounts()
+        loader = instaloader.Instaloader(download_pictures=False, download_videos=False,
+                                         download_video_thumbnails=False, compress_json=False, quiet=True)
+        try:
+            loader.load_session_from_file("tieusian_freaky")
+        except Exception as e:
+            print(f"[Instagram] 세션 로드 실패: {e}")
+        total = 0
+        import time as _time
+        for username in brands + influencers:
+            print(f"[Instagram] 수집 시작: @{username}")
+            posts = collect_account(loader, username, cutoff=override)
+            if posts:
+                from utils.image_downloader import download_images
+                download_images(posts)
+                from db.database import save_fashion_posts, log_crawl
+                saved = save_fashion_posts(posts)
+                log_crawl(source="instagram", game="fashion", status="success", count=saved)
+                print(f"[Instagram] @{username}: {saved}개 저장")
+                total += saved
+            _time.sleep(10)
+        print(f"[Instagram] 전체 완료: {total}개 저장")
+    else:
+        run_instagram_collector()

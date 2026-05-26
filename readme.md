@@ -25,7 +25,7 @@ H&M·유니클로 등 SPA 브랜드 공식 사이트와 한국 인플루언서 I
 | **멀티소스 수집** | Instagram 한국 인플루언서 (Instaloader) + H&M·유니클로·ZARA·탑텐·스파오 브랜드 룩북 (Playwright) |
 | **Claude Vision 캡셔닝** | 실루엣·소재·컬러·스타일 속성을 한국어 전문 용어로 캡셔닝 (`caption_ai`), 패션 아닌 이미지 자동 삭제 |
 | **2차 메타 캡셔닝** | 전문용어 캡션을 일반화 키워드 5~8개로 압축 (`caption_meta`) |
-| **시맨틱 검색** | `paraphrase-multilingual-MiniLM-L12-v2` 384차원 벡터 + pgvector 유사도 검색 + Claude 쿼리 확장 |
+| **하이브리드 검색** | 벡터 유사도(70%) + 키워드 매칭(30%) 결합, Claude 쿼리 확장으로 검색 품질 향상 |
 | **LangGraph 에이전트** | Scout → Couture MD (Planner+Writer) → Critic 자동화 파이프라인, DB 저장 |
 | **Self-Correction** | Critic 노드: 데이터 부족·JSON 파싱 실패 시 Couture MD로 자동 재시도 (최대 3회) |
 | **Next.js 대시보드** | 시맨틱 검색, 트렌드 리포트 조회, 전체 이미지 브라우징 UI |
@@ -33,6 +33,13 @@ H&M·유니클로 등 SPA 브랜드 공식 사이트와 한국 인플루언서 I
 | **중복 수집 방지** | 브랜드 스크래퍼: DB에 이미 있는 URL 발견 시 즉시 조기 종료, Instagram: 마지막 크롤 시각 기준으로 이후 포스트만 수집 |
 | **동적 키워드 태그** | 검색창 하단 키워드 칩을 caption_meta 빈도 기반으로 DB에서 실시간 추출 |
 | **벡터 기반 대표 이미지** | 트렌드 리포트 대표 이미지를 Claude 선택이 아닌 트렌드 제목 pgvector 유사도 검색으로 자동 매칭 |
+| **자연어 검색** | 키워드뿐 아니라 자연어 쿼리 입력 가능, Claude Haiku가 패션 키워드로 자동 확장 |
+| **멀티 키워드 검색** | 검색창 하단 키워드 태그 복수 선택 시 조합 검색 (예: 미니멀 + 캐주얼 + 화이트) |
+| **이미지 검색** | 이미지 업로드 시 Claude Vision 분석 후 유사 스타일 이미지 자동 검색 |
+| **멀티 필터링** | 소스(Instagram/Lookbook), 기간, 계정을 복수 조건으로 검색 결과 필터링 |
+| **리포트 기간 필터** | 리포트 생성 시 분석 기간 선택 (1일~전체), 해당 기간 포스트 수 실시간 확인 및 데이터 부족 경고 |
+| **여성 패션 자동 필터링** | 캡셔닝 시 Claude가 남성복·아동복·패션 무관 이미지 판별 후 자동 삭제 |
+| **수집 대상 관리** | MD가 대시보드에서 Instagram 계정·브랜드 URL 직접 추가·삭제 (Manage 탭) |
 
 ---
 
@@ -151,8 +158,9 @@ CRAI/
 │   ├── api/
 │   │   ├── main.py               # FastAPI 앱 (CORS, 라우터, /stats, /posts)
 │   │   └── routers/
-│   │       ├── search.py         # GET /search — 벡터 유사도 검색
+│   │       ├── search.py         # GET /search, POST /search/image — 하이브리드·이미지 검색
 │   │       ├── fashion_reports.py # GET/POST /fashion-reports
+│   │       ├── config_manager.py  # GET/POST/DELETE /config/* — 수집 대상 관리
 │   │       └── pipeline.py       # GET|POST /pipeline/* — 파이프라인 트리거·상태
 │   ├── crawlers/
 │   │   ├── instagram_collector.py # Instaloader, 세션 인증, 인플루언서 60일 룩백
@@ -235,7 +243,16 @@ CRAI/
 |--------|------|------|
 | GET | `/stats` | 수집 통계 (전체·소스별) |
 | GET | `/posts?source=&limit=&offset=` | 전체 이미지 목록 (caption_meta 포함) |
-| GET | `/search?q=키워드&days=60` | 벡터 유사도 검색 + Claude 쿼리 확장 |
+| GET | `/search?q=키워드&days=60&sources=instagram,lookbook&accounts=계정명` | 하이브리드 검색 (벡터 70% + 키워드 30%) + Claude 쿼리 확장 + 멀티 필터 |
+| POST | `/search/image` | 이미지 업로드 → Claude Vision 분석 → 유사 이미지 검색 |
+| GET | `/search/accounts` | 수집된 계정 목록 조회 |
+| GET | `/fashion-reports/count?days=30` | 기간별 캡셔닝 완료 포스트 수 조회 |
+| GET | `/config/instagram` | Instagram 수집 계정 목록 조회 |
+| POST | `/config/instagram` | Instagram 계정 추가 |
+| DELETE | `/config/instagram/{type}/{username}` | Instagram 계정 삭제 |
+| GET | `/config/brands` | 브랜드 URL 목록 조회 |
+| POST | `/config/brands` | 브랜드 URL 추가 |
+| DELETE | `/config/brands/{key}` | 브랜드 URL 삭제 |
 | GET | `/fashion-reports` | 트렌드 리포트 목록 |
 | GET | `/fashion-reports/{id}` | 트렌드 리포트 상세 |
 | GET | `/fashion-reports/generate/status` | 리포트 생성 진행 상태 |
@@ -264,11 +281,16 @@ CRAI/
 - LangGraph 파이프라인 — Scout → Couture MD (Planner+Writer) → Critic 노드 + DB 저장
 - Critic 노드 — 트렌드 5개 완비·summary 유무 검증, 실패 시 Couture MD 재시도 (최대 3회)
 - 크롤링 원클릭 파이프라인 — 버튼 클릭 → 수집 → 1차·2차 캡셔닝 → 임베딩 자동 순차 실행, since 필터로 새 데이터만 처리
-- Claude 쿼리 확장 — 검색어를 패션 키워드로 확장하여 시맨틱 검색 품질 향상
+- 하이브리드 검색 — 벡터 유사도(70%) + 키워드 매칭(30%) 결합, Claude 쿼리 확장 적용
+- 멀티 키워드 검색 — 검색창 하단 키워드 태그 복수 선택 후 조합 검색
+- 멀티 필터링 — 소스·기간·계정 복수 조건 필터 (검색 탭)
+- 여성 패션 자동 필터링 — 캡셔닝 시 남성복·무관 이미지 자동 삭제
 - 동적 키워드 태그 — caption_meta 빈도 기반 상위 키워드를 DB에서 실시간 추출해 검색창 하단에 표시
 - 벡터 기반 대표 이미지 매칭 — 트렌드 제목을 벡터화해 pgvector로 가장 유사한 이미지 자동 선정
-- FastAPI — 전체 이미지·검색·통계·리포트·파이프라인 트리거·크롤링·로그·키워드·ID조회 엔드포인트
-- Next.js 대시보드 — Trends(대시보드), Search, Reports, Data 탭
+- 이미지 업로드 검색 — Claude Vision 분석 후 유사 스타일 이미지 검색
+- 수집 대상 관리 메뉴 — Manage 탭에서 Instagram 계정·브랜드 URL 추가·삭제
+- FastAPI — 전체 이미지·검색·이미지검색·통계·리포트·파이프라인·크롤링·설정 엔드포인트
+- Next.js 대시보드 — Trends, Search, Reports, Data, Manage 탭
 - 이미지 카드 hover 시 전체 캡션 오버레이 표시
 
 ---

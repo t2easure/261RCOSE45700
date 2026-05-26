@@ -6,16 +6,12 @@ interface SearchBarProps {
   onSearch: (query: string, days: number) => void
   loading?: boolean
   large?: boolean
+  days?: number
 }
 
-const PERIOD_OPTIONS = [
-  { value: 30, label: '1 Month' },
-  { value: 60, label: '2 Months' },
-]
-
-export default function SearchBar({ onSearch, loading, large }: SearchBarProps) {
+export default function SearchBar({ onSearch, loading, large, days = 60 }: SearchBarProps) {
   const [query, setQuery] = useState('')
-  const [days, setDays] = useState(60)
+  const [selected, setSelected] = useState<string[]>([])
   const [suggested, setSuggested] = useState<string[]>([])
 
   useEffect(() => {
@@ -27,33 +23,34 @@ export default function SearchBar({ onSearch, loading, large }: SearchBarProps) 
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (query.trim()) onSearch(query.trim(), days)
+    const q = selected.length > 0 ? selected.join(' ') : query.trim()
+    if (q) onSearch(q, days)
   }
+
+  function toggleKeyword(kw: string) {
+    setSelected(prev =>
+      prev.includes(kw) ? prev.filter(k => k !== kw) : [...prev, kw]
+    )
+    setQuery('')
+  }
+
+  const effectiveQuery = selected.length > 0 ? selected.join(' ') : query
 
   return (
     <div className="space-y-4">
       <form onSubmit={handleSubmit} className="flex gap-2">
         <input
           type="text"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search fashion keywords (e.g. Comfort Classic)"
+          value={selected.length > 0 ? selected.join(' ') : query}
+          onChange={(e) => { setQuery(e.target.value); setSelected([]) }}
+          placeholder="패션 트렌드를 자유롭게 검색해보세요 (예: 편하면서 세련된 출근룩)"
           className={`flex-1 border border-brown-200 bg-white px-5 text-brown-800 placeholder-brown-300 outline-none transition focus:border-brown-500 focus:ring-2 focus:ring-brown-100 ${
             large ? 'rounded-2xl py-4 text-base' : 'rounded-xl py-3 text-sm'
           }`}
         />
-        <select
-          value={days}
-          onChange={(e) => setDays(Number(e.target.value))}
-          className="rounded-xl border border-brown-200 bg-white px-3 py-3 text-sm text-brown-600 outline-none focus:border-brown-400"
-        >
-          {PERIOD_OPTIONS.map((o) => (
-            <option key={o.value} value={o.value}>{o.label}</option>
-          ))}
-        </select>
         <button
           type="submit"
-          disabled={loading || !query.trim()}
+          disabled={loading || !effectiveQuery.trim()}
           className={`rounded-xl bg-brown-600 font-medium text-cream-50 transition hover:bg-brown-700 disabled:opacity-40 ${
             large ? 'px-8 py-4 text-base' : 'px-6 py-3 text-sm'
           }`}
@@ -66,8 +63,12 @@ export default function SearchBar({ onSearch, loading, large }: SearchBarProps) 
         {suggested.map((kw) => (
           <button
             key={kw}
-            onClick={() => { setQuery(kw); onSearch(kw, days) }}
-            className="rounded-full border border-brown-200 bg-white px-3 py-1.5 text-xs text-brown-500 transition hover:border-brown-400 hover:text-brown-700"
+            onClick={() => toggleKeyword(kw)}
+            className={`rounded-full border px-3 py-1.5 text-xs transition ${
+              selected.includes(kw)
+                ? 'border-brown-600 bg-brown-600 text-cream-50'
+                : 'border-brown-200 bg-white text-brown-500 hover:border-brown-400 hover:text-brown-700'
+            }`}
           >
             {kw}
           </button>

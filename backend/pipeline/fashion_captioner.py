@@ -13,7 +13,11 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from db.database import get_uncaptioned_posts, save_caption
 
-CAPTION_PROMPT = "이 패션 이미지를 분석하여 실루엣, 소재, 컬러, 스타일, 아이템을 포함해 3~4문장의 전문 용어로 한국어 캡션을 작성해줘."
+CAPTION_PROMPT = """이 패션 이미지를 분석해줘.
+만약 이미지가 20대 여성 패션(여성 의류, 여성 코디, 여성 룩북 등)이 아니라면 SKIP 이라고만 답해.
+남성복, 아동복, 패션과 무관한 이미지(음식, 풍경, 인테리어 등)도 SKIP.
+여성 패션이 맞다면 실루엣, 소재, 컬러, 스타일, 아이템을 포함해 3~4문장의 전문 용어로 한국어 캡션을 작성해줘.
+마크다운 기호(#, **, * 등)나 특수문자 없이 일반 텍스트로만 작성해줘."""
 
 async def get_image_base64(client, url: str):
     try:
@@ -39,16 +43,22 @@ async def process_post(ant_client, http_client, post, semaphore):
                     {"type": "text", "text": CAPTION_PROMPT}
                 ]}]
             )
-            save_caption(post["id"], response.content[0].text.strip())
+            caption = response.content[0].text.strip()
+            if caption.upper().startswith("SKIP"):
+                from db.database import delete_post
+                delete_post(post["id"])
+                tqdm.write(f"🚫 ID #{post['id']} 여성 패션 아님 → 삭제")
+                return False
+            save_caption(post["id"], caption)
             return True
         except Exception as e:
             # 에러 발생 시 진행률 바를 방해하지 않고 로그 출력
             tqdm.write(f"❌ ID #{post['id']} 실패: {e}")
             return False
 
-async def run_captioning(batch_size: int = 50):
+async def run_captioning(batch_size: int = 50, per_account: int = 50, since: str = None):
     ant_client = anthropic.AsyncAnthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
-    posts = get_uncaptioned_posts(limit=batch_size)
+    posts = get_uncaptioned_posts(limit=batch_size, per_account=per_account, since=since)
     
     if not posts:
         print("✨ 분석할 이미지가 없습니다.")

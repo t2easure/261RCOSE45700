@@ -1,12 +1,13 @@
 'use client'
 
-export type Tab = 'dashboard' | 'search' | 'reports' | 'data'
+export type Tab = 'dashboard' | 'search' | 'reports' | 'data' | 'manage'
 
 const TABS: { value: Tab; label: string }[] = [
   { value: 'dashboard', label: 'Trends' },
   { value: 'search', label: 'Search' },
   { value: 'reports', label: 'Reports' },
   { value: 'data', label: 'Data' },
+  { value: 'manage', label: 'Manage' },
 ]
 
 interface NavbarProps {
