@@ -1344,7 +1344,13 @@ export default function Home() {
                     {weeklySorted.length > 0 && (
                       <div className="rounded-2xl bg-white p-6 shadow-sm">
                         <p className="text-sm font-semibold text-brown-700 mb-0.5">주별 TOP 트렌드</p>
-                        <p className="text-xs text-brown-400 mb-4">각 주 신호강도 기준 상위 트렌드</p>
+                        <p className="text-xs text-brown-400 mb-3">각 주 신호강도 기준 상위 트렌드</p>
+                        <div className="flex flex-wrap gap-3 mb-4">
+                          <span className="flex items-center gap-1.5 text-[11px] text-brown-400"><span className="w-2.5 h-2.5 rounded-full bg-orange-400 inline-block"/>급상승</span>
+                          <span className="flex items-center gap-1.5 text-[11px] text-brown-400"><span className="w-2.5 h-2.5 rounded-full bg-green-400 inline-block"/>성장중</span>
+                          <span className="flex items-center gap-1.5 text-[11px] text-brown-400"><span className="w-2.5 h-2.5 rounded-full bg-yellow-300 inline-block"/>주목</span>
+                          <span className="flex items-center gap-1.5 text-[11px] text-brown-400"><span className="w-2.5 h-2.5 rounded-full bg-stone-300 inline-block"/>약세</span>
+                        </div>
                         <div className="space-y-4">
                           {[...weeklySorted].reverse().map(r => {
                             const clusters = parseClustersLocal(r)
@@ -1509,7 +1515,7 @@ export default function Home() {
                       : signalLabel === 'saturated' ? { text: '⚠️ 브랜드 포화', cls: 'bg-yellow-100 text-yellow-700' }
                       : signalLabel === 'weak' ? { text: '💤 미미함', cls: 'bg-stone-100 text-stone-400' }
                       : null
-                    const brandNotIn = topCluster?.brand_ratio !== undefined && topCluster.brand_ratio < 0.05
+                    const brandNotIn = topCluster?.brand_ratio !== undefined && topCluster.brand_ratio < 0.05 && signalLabel !== 'saturated'
                     const cardTitle = clusters[0]?.short_name
                       ? clusters[0].short_name
                       : keywords.length > 0
