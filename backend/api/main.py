@@ -48,8 +48,8 @@ def startup():
     init_db()
     # 매주 월요일 새벽 3시 주간 리포트
     scheduler.add_job(_run_weekly_report, CronTrigger(day_of_week="mon", hour=3, minute=0), id="weekly_report", replace_existing=True)
-    # 매월 1일 새벽 4시 월간 리포트
-    scheduler.add_job(_run_monthly_report, CronTrigger(day=1, hour=4, minute=0), id="monthly_report", replace_existing=True)
+    # 매월 말일 새벽 4시 월간 리포트
+    scheduler.add_job(_run_monthly_report, CronTrigger(day='last', hour=4, minute=0), id="monthly_report", replace_existing=True)
     scheduler.start()
     print("[Scheduler] 스케줄러 시작 — 주간 리포트 월요일 03:00 / 월간 리포트 1일 04:00")
 
