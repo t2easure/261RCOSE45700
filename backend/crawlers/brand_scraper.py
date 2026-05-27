@@ -158,7 +158,7 @@ async def scrape_brand(brand: str, url: str) -> list[dict]:
     existing_urls = get_existing_urls(brand)
 
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=False)
+        browser = await p.chromium.launch(headless=True)
         context = await browser.new_context(
             user_agent=(
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
