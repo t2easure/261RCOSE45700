@@ -54,7 +54,12 @@ def run_crawl(background_tasks: BackgroundTasks):
             t.start()
             t.join()
             _set("running", "Instagram 수집 중...")
-            run_instagram_collector()
+            import asyncio as _aio
+            from crawlers.instagram_playwright import run_instagram_playwright
+            _ig_loop = _aio.new_event_loop()
+            _aio.set_event_loop(_ig_loop)
+            _ig_loop.run_until_complete(run_instagram_playwright())
+            _ig_loop.close()
             _set("running", "캡셔닝(1차) 중...")
             from pipeline.fashion_captioner import run_captioning
             import asyncio
