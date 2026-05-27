@@ -27,9 +27,10 @@ def run_caption(background_tasks: BackgroundTasks, body: CaptionRequest = Captio
     if _status["state"] == "running":
         return {"message": "파이프라인이 이미 실행 중입니다."}
 
+    _set("running", "1차 캡셔닝 중...")
+
     def _run():
         from pipeline.fashion_captioner import run_captioning
-        _set("running", "1차 캡셔닝 중...")
         try:
             asyncio.run(run_captioning(per_account=50, since=body.since))
             _set("idle", "1차 캡셔닝 완료 (계정당 50개)")
@@ -45,9 +46,10 @@ def run_meta(background_tasks: BackgroundTasks, body: CaptionRequest = CaptionRe
     if _status["state"] == "running":
         return {"message": "파이프라인이 이미 실행 중입니다."}
 
+    _set("running", "2차 메타 캡셔닝 중...")
+
     def _run():
         from pipeline.meta_captioner import run_meta_captioning
-        _set("running", "2차 메타 캡셔닝 중...")
         try:
             asyncio.run(run_meta_captioning(batch_size=batch_size, since=body.since))
             _set("idle", f"2차 메타 캡셔닝 완료 (batch_size={batch_size})")
@@ -63,9 +65,10 @@ def run_embed(background_tasks: BackgroundTasks, body: CaptionRequest = CaptionR
     if _status["state"] == "running":
         return {"message": "파이프라인이 이미 실행 중입니다."}
 
+    _set("running", "임베딩 생성 중...")
+
     def _run():
         from pipeline.embedder import run_embedding
-        _set("running", "임베딩 생성 중...")
         try:
             count = run_embedding(batch_size=batch_size, since=body.since)
             _set("idle", f"임베딩 완료 ({count}개)")

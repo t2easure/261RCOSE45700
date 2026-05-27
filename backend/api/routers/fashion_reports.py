@@ -91,11 +91,12 @@ def generate_report(req: GenerateRequest, background_tasks: BackgroundTasks):
     start_date = req.start_date
     end_date = req.end_date
 
+    _set("running", "리포트 생성 준비 중...")
+
     def _run():
         from pipeline.multi_agent_pipeline import run_multi_agent_pipeline
-        _set("running", "Scout — 데이터 수집 중...")
         try:
-            report_id = run_multi_agent_pipeline(days=days, start_date=start_date, end_date=end_date)
+            report_id = run_multi_agent_pipeline(days=days, start_date=start_date, end_date=end_date, status_callback=_set)
             _set("idle", f"리포트 생성 완료 (id={report_id})")
         except Exception as e:
             _set("error", str(e))

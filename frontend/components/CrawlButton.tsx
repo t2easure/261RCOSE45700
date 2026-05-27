@@ -110,6 +110,12 @@ export default function CrawlButton({ onComplete }: CrawlButtonProps) {
     }
   }
 
+  async function handleStop() {
+    await fetch('/api/crawl/stop', { method: 'POST' })
+    setMessage('중단 신호 전송됨')
+    setLoading(false)
+  }
+
   return (
     <div className="flex items-center gap-3">
       <button
@@ -126,6 +132,14 @@ export default function CrawlButton({ onComplete }: CrawlButtonProps) {
           '지금 크롤링 실행'
         )}
       </button>
+      {loading && (
+        <button
+          onClick={handleStop}
+          className="px-4 py-2 bg-red-500 text-white text-sm font-medium rounded-lg hover:bg-red-600 transition-colors"
+        >
+          중단
+        </button>
+      )}
       {message && (
         <span
           className={`text-sm ${

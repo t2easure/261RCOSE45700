@@ -1,4 +1,5 @@
 import asyncio
+import threading
 from fastapi import APIRouter, BackgroundTasks
 import psycopg2.extras
 
@@ -7,6 +8,7 @@ from db.database import _get_connection
 router = APIRouter(tags=["crawl"])
 
 _crawl_status: dict = {"state": "idle", "message": ""}
+_stop_event = threading.Event()
 
 
 def _set(state: str, message: str):
@@ -40,7 +42,11 @@ def run_crawl(background_tasks: BackgroundTasks):
             result = []
             def _scrape():
                 import asyncio
-                loop = asyncio.new_event_loop()
+                import sys
+                if sys.platform == 'win32':
+                    loop = asyncio.ProactorEventLoop()
+                else:
+                    loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
                 loop.run_until_complete(run_brand_scraper(_status_callback=_set))
                 loop.close()
@@ -70,5 +76,13 @@ def run_crawl(background_tasks: BackgroundTasks):
                     )
                 conn.commit()
 
+    _stop_event.clear()
     background_tasks.add_task(_run)
     return {"success": True, "message": "크롤링 시작"}
+
+
+@router.post("/crawl/stop")
+def stop_crawl():
+    _stop_event.set()
+    _set("idle", "크롤링 중단됨")
+    return {"success": True, "message": "중단 신호 전송됨"}

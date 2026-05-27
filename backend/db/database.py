@@ -170,27 +170,36 @@ def save_fashion_posts(items: list[dict]) -> int:
     return inserted
 
 
-def get_uncaptioned_posts(limit: int = 100, per_account: int = 50, since: str = None) -> list[dict]:
-    """caption_ai 없는 패션 포스팅 조회 (계정당 최대 per_account개)."""
-    since_clause = "AND collected_at >= %s" if since else ""
+def get_uncaptioned_posts(limit: int = 100, per_account: int = 50, since: str = None, empty_only: bool = False) -> list[dict]:
+    """caption_ai 없는 패션 포스팅 조회."""
+    # since가 있으면 쿼리에 조건 추가
+    if empty_only:
+        where_clause = "WHERE caption_ai = '' AND image_url IS NOT NULL"
+    else:
+        where_clause = "WHERE (caption_ai IS NULL OR caption_ai = '') AND image_url IS NOT NULL"
+    if since:
+        where_clause += " AND collected_at >= %s"
+    
+    query = f"""
+        SELECT id, image_url, account_name, source
+        FROM (
+            SELECT id, image_url, account_name, source,
+                   ROW_NUMBER() OVER (PARTITION BY account_name ORDER BY id) AS rn
+            FROM fashion_posts
+            {where_clause}
+        ) sub
+        WHERE rn <= %s
+        LIMIT %s
+    """
+    
+    # 전달할 파라미터 구성
+    params = [since] if since else []
+    params.extend([per_account, limit])
+    
     with _get_connection() as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute(
-                f"""
-                SELECT id, image_url, account_name, source
-                FROM (
-                    SELECT id, image_url, account_name, source,
-                           ROW_NUMBER() OVER (PARTITION BY account_name ORDER BY id) AS rn
-                    FROM fashion_posts
-                    WHERE caption_ai IS NULL AND image_url IS NOT NULL {since_clause}
-                ) sub
-                WHERE rn <= %s
-                LIMIT %s
-                """,
-                ((since, per_account, limit) if since else (per_account, limit)),
-            )
+            cur.execute(query, tuple(params))
             return [dict(row) for row in cur.fetchall()]
-
 
 def delete_post(post_id: int) -> None:
     with _get_connection() as conn:
