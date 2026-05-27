@@ -23,6 +23,17 @@ from db.database import _get_connection, save_fashion_report
 
 ACCOUNTS_PATH = Path(__file__).parent.parent.parent / "config" / "instagram_accounts.json"
 
+_progress_cb = None
+
+def set_progress_callback(cb):
+    global _progress_cb
+    _progress_cb = cb
+
+def _progress(msg: str):
+    if _progress_cb:
+        _progress_cb("running", msg)
+    print(msg)
+
 
 def _load_account_sets() -> tuple[set, set]:
     with open(ACCOUNTS_PATH, encoding="utf-8") as f:
@@ -55,11 +66,11 @@ def scout_agent(state: CRAIState) -> CRAIState:
     end_date = state.get("end_date")
 
     if start_date and end_date:
-        print(f"🔍 [Scout] 데이터 수집 중... ({start_date} ~ {end_date})")
+        _progress(f"[1/4] 데이터 수집 중... ({start_date} ~ {end_date})")
         date_filter = f"AND posted_at >= '{start_date}' AND posted_at < ('{end_date}'::date + interval '1 day')"
     else:
         days = state.get("days", 30)
-        print(f"🔍 [Scout] 데이터 수집 중... (최근 {days}일)")
+        _progress(f"[1/4] 데이터 수집 중... (최근 {days}일)")
         date_filter = "" if days == 0 else f"AND collected_at >= NOW() - ('{days} days')::interval"
 
     sql = f"""
@@ -143,6 +154,15 @@ def _trend_agent(posts: list[dict], client: anthropic.Anthropic) -> dict:
         raw_name = name_res.content[0].text.strip().split("\n")[0].lstrip("#1234567890. ").strip()
         BAD_PREFIXES = ("죄송", "제공", "패션", "공통", "MD", "아래", "다음", "분석", "스타일명", "이름")
         trend_name = raw_name[:30] if raw_name and len(raw_name) < 30 and not any(raw_name.startswith(p) for p in BAD_PREFIXES) else f"트렌드 {i+1}"
+        short_res = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=20,
+            messages=[{"role": "user", "content": (
+                f"'{trend_name}' 트렌드를 1~2단어 한국어 키워드로 압축해. 예시: '오버사이즈', '미니멀 캐주얼'. 단어만 출력:"
+            )}]
+        )
+        raw_short = short_res.content[0].text.strip().split("\n")[0].strip()
+        short_name = raw_short[:10] if raw_short and len(raw_short) <= 10 and not any(raw_short.startswith(p) for p in BAD_PREFIXES) else None
         cluster_description = re.sub(r'[\*\#\_\-]+', '', desc_res.content[0].text.strip()).strip()
 
         influencer_posts = [p for p in cluster_posts if p["account_name"] not in brands and (p.get("followers") or 0) >= 100]
@@ -195,6 +215,7 @@ def _trend_agent(posts: list[dict], client: anthropic.Anthropic) -> dict:
 
         clusters.append({
             "trend_name": trend_name,
+            "short_name": short_name,
             "description": cluster_description,
             "post_count": len(cluster_posts),
             "is_leading": is_leading,
@@ -305,7 +326,7 @@ def _lead_index_agent(posts: list[dict], trend_clusters: list[dict]) -> list[dic
 # ── Orchestrator Node ────────────────────────────────────────────────────────
 
 def orchestrator_node(state: CRAIState) -> CRAIState:
-    print("🎯 [Orchestrator] 3개 에이전트 병렬 실행 시작...")
+    _progress("[2/4] 트렌드 클러스터링 + 참여율 분석 중...")
     posts = state["posts"]
     if not posts:
         return {**state, "error_messages": state["error_messages"] + ["포스트 없음"]}
@@ -384,7 +405,7 @@ def orchestrator_node(state: CRAIState) -> CRAIState:
 # ── Critic Node ──────────────────────────────────────────────────────────────
 
 def critic_node(state: CRAIState) -> CRAIState:
-    print("🔎 [Critic] 검증 중...")
+    _progress("[3/4] 결과 검증 중...")
     errors = []
     if not state.get("summary"):
         errors.append("summary 없음")
@@ -406,7 +427,7 @@ def should_continue_critic(state: CRAIState) -> str:
 # ── Save Node ────────────────────────────────────────────────────────────────
 
 def save_node(state: CRAIState) -> CRAIState:
-    print("💾 [Save] 저장 중...")
+    _progress("[4/4] 리포트 저장 중...")
     report_id = save_fashion_report(
         summary=state["summary"],
         top_keywords=state["top_keywords"],
@@ -443,7 +464,9 @@ def build_graph():
     return graph.compile()
 
 
-def run_multi_agent_pipeline(days: int = 30, start_date: str = None, end_date: str = None) -> Optional[int]:
+def run_multi_agent_pipeline(days: int = 30, start_date: str = None, end_date: str = None, status_callback=None) -> Optional[int]:
+    if status_callback:
+        set_progress_callback(status_callback)
     app = build_graph()
     initial: CRAIState = {
         "days": days,

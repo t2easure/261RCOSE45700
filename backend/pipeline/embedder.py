@@ -1,7 +1,9 @@
 import psycopg2
 import psycopg2.extras
 from sentence_transformers import SentenceTransformer
-
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent))
 from db.database import _get_connection, save_embedding
 
 MODEL_NAME = "paraphrase-multilingual-MiniLM-L12-v2"

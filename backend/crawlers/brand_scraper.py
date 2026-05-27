@@ -149,7 +149,7 @@ async def scrape_brand(brand: str, url: str) -> list[dict]:
     existing_urls = get_existing_urls(brand)
 
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
+        browser = await p.chromium.launch(headless=False)
         context = await browser.new_context(
             user_agent=(
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -163,7 +163,7 @@ async def scrape_brand(brand: str, url: str) -> list[dict]:
         try:
             await Stealth().apply_stealth_async(page)
             print(f"[{brand}] 페이지 접속 중...")
-            await page.goto(url, wait_until="networkidle", timeout=60000)
+            await page.goto(url, wait_until="domcontentloaded", timeout=90000)
             await asyncio.sleep(5)
 
             # 쿠키 동의 클릭 (최초 1회만)
