@@ -774,7 +774,11 @@ export default function Home() {
                           ))}
                         </div>
                       )}
-                      <p className="text-sm leading-7 text-brown-600 pt-2 border-t border-brown-50">{selectedReport.summary}</p>
+                      <div className="text-sm leading-7 text-brown-600 pt-2 border-t border-brown-50 space-y-2">
+                        {selectedReport.summary.split(/(?=\d\))/).filter(Boolean).map((line, i) => (
+                          <p key={i}>{line.trim()}</p>
+                        ))}
+                      </div>
                     </>
                   )
                 })()}
