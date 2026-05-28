@@ -53,17 +53,17 @@ def _run_daily_crawl():
         from pipeline.meta_captioner import run_meta_captioning
         from pipeline.embedder import run_embedding
         print("[Scheduler] 일일 크롤링 시작")
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
         for coro, kwargs in [
             (run_brand_scraper, {}),
             (run_instagram_playwright, {}),
             (run_captioning, {"batch_size": 200, "per_account": 50}),
             (run_meta_captioning, {"batch_size": 200}),
-            (run_embedding, {"batch_size": 200}),
         ]:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
             loop.run_until_complete(coro(**kwargs))
-            loop.close()
+        loop.close()
+        run_embedding(batch_size=200)
         print("[Scheduler] 일일 크롤링 완료")
     threading.Thread(target=_job, daemon=True).start()
 
