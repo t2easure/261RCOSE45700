@@ -36,6 +36,32 @@ CAPTION_PROMPT = """이 이미지를 분석해줘.
 [디테일] 눈에 띄는 디테일 (예: 버튼 디테일, 러플, 절개선, 프린트)
 [설명] 위 요소를 종합한 2문장 설명"""
 
+def parse_structured_caption(text: str) -> dict:
+    """구조화된 캡션 텍스트를 카테고리별로 파싱."""
+    if not text or text.strip() == "SKIP":
+        return {}
+
+    import re
+    result = {}
+    category_map = {
+        "스타일": "style",
+        "실루엣": "silhouette",
+        "컬러": "color",
+        "소재": "material",
+        "아이템": "item",
+        "디테일": "detail",
+        "설명": "description",
+    }
+
+    for kor, eng in category_map.items():
+        pattern = rf'\[{kor}\]\s*(.+?)(?=\[|$)'
+        match = re.search(pattern, text, re.DOTALL)
+        if match:
+            result[eng] = match.group(1).strip()
+
+    return result
+
+
 async def get_image_base64(client, url: str):
     if not url:
         return None, None
