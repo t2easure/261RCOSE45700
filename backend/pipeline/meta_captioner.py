@@ -10,13 +10,12 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from db.database import get_uncaptioned_meta_posts, save_caption_meta
 
-META_PROMPT = """아래 패션 캡션에서 핵심 키워드만 추출해서 쉼표로 구분해줘.
-실루엣, 소재, 컬러, 스타일, 아이템 카테고리 위주로, 일반인도 이해할 수 있는 단어로.
-5~8개 이내로 짧게.
+META_PROMPT = """아래 패션 이미지 캡션에서 검색에 유용한 핵심 키워드만 추출해줘.
+스타일, 색상, 소재, 아이템, 실루엣 중심으로 추출하고 쉼표로 구분해서 한 줄로만 반환해.
+예시: 미니멀, 오버사이즈, 아이보리, 코튼, 와이드팬츠, 크롭티
+설명이나 다른 말 없이 키워드만:
 
-캡션: {caption}
-
-예시 출력: 오버사이즈, 린넨, 베이지, 캐주얼, 셔츠, 아이보포인트"""
+캡션: {caption}"""
 
 async def process_post(client, post, semaphore):
     async with semaphore:
