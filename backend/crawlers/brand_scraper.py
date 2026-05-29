@@ -3,8 +3,31 @@ import json
 import re
 import sys
 import io
+import hashlib
+import httpx
 from pathlib import Path
 from datetime import datetime, timezone
+
+DATA_DIR = Path(__file__).parent.parent / "data" / "images"
+
+
+def download_image(url: str, brand: str) -> str:
+    """이미지 다운로드 후 로컬 경로 반환. 실패 시 원본 URL 반환."""
+    try:
+        h = hashlib.md5(url.encode()).hexdigest()
+        save_dir = DATA_DIR / brand
+        save_dir.mkdir(parents=True, exist_ok=True)
+        save_path = save_dir / f"{h}.jpg"
+        if save_path.exists():
+            return f"/images/{brand}/{h}.jpg"
+        with httpx.Client(timeout=10, follow_redirects=True) as client:
+            r = client.get(url, headers={"User-Agent": "Mozilla/5.0"})
+            if r.status_code == 200 and len(r.content) > 1000:
+                save_path.write_bytes(r.content)
+                return f"/images/{brand}/{h}.jpg"
+    except Exception:
+        pass
+    return url
 
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace', line_buffering=True)
 sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace', line_buffering=True)
@@ -17,7 +40,6 @@ load_dotenv(Path(__file__).parent.parent.parent / ".env")
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from db.database import save_fashion_posts, log_crawl
-from utils.image_downloader import download_images
 
 URLS_PATH = Path(__file__).parent.parent.parent / "config" / "brand_urls.json"
 
@@ -117,7 +139,16 @@ def get_existing_urls(brand: str) -> set:
     with _get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT image_url FROM fashion_posts WHERE account_name = %s", (brand,))
-            return {r[0] for r in cur.fetchall()}
+            results = set()
+            for (url,) in cur.fetchall():
+                results.add(url)
+                # 로컬 경로면 해시 추출, 원본 URL이면 해시 생성해서 둘 다 등록
+                if url and url.startswith('/images/'):
+                    h = url.split('/')[-1].replace('.jpg', '')
+                    results.add(h)
+                elif url and url.startswith('http'):
+                    results.add(hashlib.md5(url.encode()).hexdigest())
+            return results
 
 
 async def scrape_brand(brand: str, url: str) -> list[dict]:
@@ -127,7 +158,7 @@ async def scrape_brand(brand: str, url: str) -> list[dict]:
     existing_urls = get_existing_urls(brand)
 
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=False)
+        browser = await p.chromium.launch(headless=True)
         context = await browser.new_context(
             user_agent=(
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -141,8 +172,8 @@ async def scrape_brand(brand: str, url: str) -> list[dict]:
         try:
             await Stealth().apply_stealth_async(page)
             print(f"[{brand}] 페이지 접속 중...")
-            await page.goto(url, wait_until="domcontentloaded", timeout=60000)
-            await asyncio.sleep(3)
+            await page.goto(url, wait_until="domcontentloaded", timeout=90000)
+            await asyncio.sleep(5)
 
             # 쿠키 동의 클릭 (최초 1회만)
             for selector in ['#onetrust-accept-btn-handler', '[id*="accept"]', '[class*="accept-cookie"]']:
@@ -156,7 +187,7 @@ async def scrape_brand(brand: str, url: str) -> list[dict]:
                     pass
 
             current_page = 1
-            max_pages = 16  # 최대 수집할 페이지 수 설정 (끝까지 가려면 아주 큰 숫자로 둬도 됩니다)
+            max_pages = 1000
             seen_urls_global = set() # 전체 페이지에 걸쳐 중복 수집을 막기 위한 세트
 
             while current_page <= max_pages:
@@ -241,7 +272,8 @@ async def scrape_brand(brand: str, url: str) -> list[dict]:
                             print(f"[DEBUG] {brand} 필터에 막혀 버려짐: {norm}")
                         continue
 
-                    if norm in existing_urls:
+                    norm_hash = hashlib.md5(norm.encode()).hexdigest()
+                    if norm in existing_urls or norm_hash in existing_urls:
                         print(f"[{brand}] 이미 수집된 URL 발견 → 중단")
                         early_stop = True
                         break
@@ -249,11 +281,12 @@ async def scrape_brand(brand: str, url: str) -> list[dict]:
                     seen_urls_global.add(norm)
                     page_post_count += 1
 
+                    local_url = download_image(norm, brand)
                     posts.append({
                         "source": "lookbook",
                         "account_name": brand,
                         "post_url": f"{page.url}#{hash(norm) % 999999}",
-                        "image_url": norm,
+                        "image_url": local_url,
                         "caption": "",
                         "likes": None,
                         "posted_at": now,
@@ -348,7 +381,6 @@ async def run_brand_scraper(_status_callback=None) -> int:
             _status_callback("running", f"브랜드 스크래핑 중: {brand}")
         posts = await scrape_brand(brand, url)
         if posts:
-            download_images(posts)
             saved = save_fashion_posts(posts)
             log_crawl(source="lookbook", game="fashion", status="success", count=saved)
             print(f"[Brand] {brand}: {saved}개 실제 RDS 저장 완료")

@@ -32,11 +32,13 @@ def download_image(image_url: str, account_name: str) -> str | None:
 
 
 def download_images(posts: list[dict]) -> None:
-    """posts 리스트의 image_url을 account_name별 폴더에 저장."""
+    """posts 리스트의 image_url을 account_name별 폴더에 저장하고 image_url을 로컬 경로로 교체."""
     for post in posts:
         url = post.get("image_url")
         account = post.get("account_name", "unknown")
         if url:
             path = download_image(url, account)
             if path:
-                post["local_path"] = path
+                # DATA_DIR 기준 상대 경로를 /images/ URL로 변환
+                rel = Path(path).relative_to(DATA_DIR)
+                post["image_url"] = f"/images/{rel.as_posix()}"

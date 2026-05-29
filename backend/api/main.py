@@ -4,11 +4,17 @@ load_dotenv(Path(__file__).parent.parent.parent / '.env')
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.cron import CronTrigger
+from datetime import datetime, timedelta
 
 from db.database import init_db, get_fashion_posts_all, get_fashion_stats, _get_connection
-from api.routers import search, fashion_reports, pipeline, crawl
+from api.routers import search, fashion_reports, pipeline, crawl, config_manager
 
 app = FastAPI(title="CRAI API")
+
+scheduler = BackgroundScheduler(timezone="Asia/Seoul")
 
 app.add_middleware(
     CORSMiddleware,
@@ -18,24 +24,80 @@ app.add_middleware(
 )
 
 
+IMAGES_DIR = Path(__file__).parent.parent / "data" / "images"
+IMAGES_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/images", StaticFiles(directory=str(IMAGES_DIR)), name="images")
+
+
+def _run_weekly_report():
+    from pipeline.multi_agent_pipeline import run_multi_agent_pipeline
+    end = datetime.now().date()
+    start = end - timedelta(days=7)
+    print(f"[Scheduler] 주간 리포트 생성: {start} ~ {end}")
+    run_multi_agent_pipeline(days=7, start_date=str(start), end_date=str(end))
+
+def _run_monthly_report():
+    from pipeline.multi_agent_pipeline import run_multi_agent_pipeline
+    end = datetime.now().date()
+    start = end - timedelta(days=30)
+    print(f"[Scheduler] 월간 리포트 생성: {start} ~ {end}")
+    run_multi_agent_pipeline(days=30, start_date=str(start), end_date=str(end))
+
+def _run_daily_crawl():
+    import threading
+    def _job():
+        import asyncio
+        from crawlers.brand_scraper import run_brand_scraper
+        from crawlers.instagram_playwright import run_instagram_playwright
+        from pipeline.fashion_captioner import run_captioning
+        from pipeline.meta_captioner import run_meta_captioning
+        from pipeline.embedder import run_embedding
+        print("[Scheduler] 일일 크롤링 시작")
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        for coro, kwargs in [
+            (run_brand_scraper, {}),
+            (run_instagram_playwright, {}),
+            (run_captioning, {"batch_size": 200, "per_account": 50}),
+            (run_meta_captioning, {"batch_size": 200}),
+        ]:
+            loop.run_until_complete(coro(**kwargs))
+        loop.close()
+        run_embedding(batch_size=200)
+        print("[Scheduler] 일일 크롤링 완료")
+    threading.Thread(target=_job, daemon=True).start()
+
 @app.on_event("startup")
 def startup():
     init_db()
+    # 매일 새벽 2시 크롤링 + 파이프라인
+    scheduler.add_job(_run_daily_crawl, CronTrigger(hour=2, minute=0), id="daily_crawl", replace_existing=True)
+    # 매주 월요일 새벽 3시 주간 리포트
+    scheduler.add_job(_run_weekly_report, CronTrigger(day_of_week="mon", hour=3, minute=0), id="weekly_report", replace_existing=True)
+    # 매월 말일 새벽 4시 월간 리포트
+    scheduler.add_job(_run_monthly_report, CronTrigger(day='last', hour=4, minute=0), id="monthly_report", replace_existing=True)
+    scheduler.start()
+    print("[Scheduler] 스케줄러 시작 — 일일 크롤링 02:00 / 주간 리포트 월요일 03:00 / 월간 리포트 말일 04:00")
+
+
+@app.on_event("shutdown")
+def shutdown():
+    scheduler.shutdown()
 
 
 app.include_router(search.router)
 app.include_router(fashion_reports.router)
 app.include_router(pipeline.router)
 app.include_router(crawl.router)
+app.include_router(config_manager.router)
 
 
 @app.get("/stats")
 def stats():
     data = get_fashion_stats()
-    # 캡셔닝 완료 수 추가
     with _get_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT COUNT(*) FROM fashion_posts WHERE caption_ai IS NOT NULL")
+            cur.execute("SELECT COUNT(*) FROM fashion_posts WHERE caption_ai IS NOT NULL AND caption_ai != ''")
             data["captioned"] = cur.fetchone()[0]
             cur.execute("SELECT COUNT(*) FROM fashion_posts WHERE caption_meta IS NOT NULL")
             data["meta_captioned"] = cur.fetchone()[0]

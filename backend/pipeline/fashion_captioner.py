@@ -3,59 +3,130 @@ import asyncio
 import base64
 import httpx
 import anthropic
+import mimetypes
+import imghdr
 from tqdm.asyncio import tqdm
 from pathlib import Path
 from dotenv import load_dotenv
+import sys
 
 # 환경 변수 로드
 load_dotenv(Path(__file__).parent.parent / ".env")
-import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from db.database import get_uncaptioned_posts, save_caption
+from db.database import get_uncaptioned_posts, save_caption, delete_post
 
-CAPTION_PROMPT = "이 패션 이미지를 분석하여 실루엣, 소재, 컬러, 스타일, 아이템을 포함해 3~4문장의 전문 용어로 한국어 캡션을 작성해줘."
+# 프로젝트 루트(backend/data) 절대 경로 설정
+BASE_DIR = Path(__file__).parent.parent / "data"
+
+CAPTION_PROMPT = """이 이미지를 분석해줘.
+다음 중 하나라도 해당하면 SKIP 이라고만 답해:
+- 실제 사람이 착용한 여성 패션이 아님 (브랜드 로고, 텍스트 배너, 광고 그래픽, 제품 단독컷)
+- 착용자가 없는 옷/제품 사진
+- 남성복, 아동복
+- 음식, 풍경, 인테리어 등 패션 무관 이미지
+
+실제 사람이 착용한 여성 패션 이미지라면 실루엣, 소재, 컬러, 스타일, 아이템을 포함해 3~4문장의 전문 용어로 한국어 캡션을 작성해줘.
+마크다운 기호(#, **, * 등)나 특수문자 없이 일반 텍스트로만 작성해줘."""
 
 async def get_image_base64(client, url: str):
-    try:
-        # H&M 차단 방지를 위해 헤더 추가
-        headers = {"User-Agent": "Mozilla/5.0"}
-        resp = await client.get(url, timeout=15.0, headers=headers)
-        resp.raise_for_status()
-        content_type = resp.headers.get('Content-Type', 'image/jpeg')
-        return content_type, base64.b64encode(resp.content).decode('utf-8')
-    except: return None, None
+    if not url:
+        return None, None
+        
+    if url.startswith('http://') or url.startswith('https://'):
+        try:
+            headers = {"User-Agent": "Mozilla/5.0"}
+            resp = await client.get(url, timeout=5.0, headers=headers)
+            resp.raise_for_status()
+            content_type = resp.headers.get('Content-Type', 'image/jpeg')
+            return content_type, base64.b64encode(resp.content).decode('utf-8')
+        except Exception as e:
+            tqdm.write(f"⚠️ 원격 이미지 다운로드 실패 [{url}]: {e}")
+            return None, None
+    else:
+        try:
+            relative_path = url.lstrip('/') 
+            file_path = BASE_DIR / relative_path
+            
+            if not file_path.exists():
+                tqdm.write(f"⚠️ 로컬 파일 없음: {file_path}")
+                return None, None
+                
+            content_type, _ = mimetypes.guess_type(str(file_path))
+            if not content_type:
+                content_type = 'image/jpeg'
+                
+            with open(file_path, "rb") as image_file:
+                encoded_string = base64.b64encode(image_file.read()).decode('utf-8')
+                return content_type, encoded_string
+                
+        except Exception as e:
+            tqdm.write(f"⚠️ 로컬 이미지 읽기 실패 [{url}]: {e}")
+            return None, None
 
-async def process_post(ant_client, http_client, post, semaphore):
+async def process_post(ant_client, http_client, post, semaphore, retries=3):
     async with semaphore:
         media_type, base64_data = await get_image_base64(http_client, post['image_url'])
-        if not base64_data: return False
-
-        try:
-            response = await ant_client.messages.create(
-                model="claude-haiku-4-5-20251001",
-                max_tokens=400,
-                messages=[{"role": "user", "content": [
-                    {"type": "image", "source": {"type": "base64", "media_type": media_type, "data": base64_data}},
-                    {"type": "text", "text": CAPTION_PROMPT}
-                ]}]
-            )
-            save_caption(post["id"], response.content[0].text.strip())
-            return True
-        except Exception as e:
-            # 에러 발생 시 진행률 바를 방해하지 않고 로그 출력
-            tqdm.write(f"❌ ID #{post['id']} 실패: {e}")
+        if not base64_data: 
             return False
 
-async def run_captioning(batch_size: int = 50):
+        # 1. 파일 진짜 포맷 확인해서 media_type 강제 교정 (png 에러 방지)
+        try:
+            raw_data = base64.b64decode(base64_data)
+            fmt = imghdr.what(None, h=raw_data)
+            if fmt:
+                media_type = f"image/{fmt}"
+        except:
+            pass
+
+        for attempt in range(retries):
+            try:
+                response = await ant_client.messages.create(
+                    model="claude-haiku-4-5-20251001",
+                    max_tokens=400,
+                    messages=[{"role": "user", "content": [
+                        {"type": "image", "source": {"type": "base64", "media_type": media_type, "data": base64_data}},
+                        {"type": "text", "text": CAPTION_PROMPT}
+                    ]}]
+                )
+                
+                caption = ""
+                if isinstance(response.content, list) and response.content:
+                    first_block = response.content[0]
+                    if hasattr(first_block, 'text'):
+                        caption = first_block.text.strip()
+                    elif isinstance(first_block, dict):
+                        caption = first_block.get('text', '').strip()
+                else:
+                    caption = getattr(response.content, 'text', str(response.content)).strip()
+
+                if caption.upper().startswith("SKIP"):
+                    delete_post(post["id"])
+                    tqdm.write(f"🚫 ID #{post['id']} 여성 패션 아님 → 삭제")
+                    return False
+                    
+                save_caption(post["id"], caption)
+                return True
+                
+            except Exception as e:
+                # 529 Overloaded 에러 나면 대기 후 자동 재시도
+                if "Overloaded" in str(e) and attempt < retries - 1:
+                    wait_time = (attempt + 1) * 5
+                    tqdm.write(f"⚠️ ID #{post['id']} 서버 과부하, {wait_time}초 후 재시도...")
+                    await asyncio.sleep(wait_time)
+                    continue
+                
+                tqdm.write(f"❌ ID #{post['id']} 실패: {e}")
+                return False
+
+async def run_captioning(batch_size: int = 200, per_account: int = 50, since: str = None, empty_only: bool = False):
     ant_client = anthropic.AsyncAnthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
-    posts = get_uncaptioned_posts(limit=batch_size)
+    posts = get_uncaptioned_posts(limit=batch_size, per_account=per_account, since=since, empty_only=empty_only)
     
     if not posts:
         print("✨ 분석할 이미지가 없습니다.")
         return
 
-    # 동시 실행 개수를 5개 정도로 살짝 낮췄습니다 (교수님 키니까 안전하게!)
-    semaphore = asyncio.Semaphore(5)
+    semaphore = asyncio.Semaphore(20)
     
     async with httpx.AsyncClient() as http_client:
         tasks = [process_post(ant_client, http_client, post, semaphore) for post in posts]
