@@ -139,7 +139,16 @@ def get_existing_urls(brand: str) -> set:
     with _get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT image_url FROM fashion_posts WHERE account_name = %s", (brand,))
-            return {r[0] for r in cur.fetchall()}
+            results = set()
+            for (url,) in cur.fetchall():
+                results.add(url)
+                # 로컬 경로면 해시 추출, 원본 URL이면 해시 생성해서 둘 다 등록
+                if url and url.startswith('/images/'):
+                    h = url.split('/')[-1].replace('.jpg', '')
+                    results.add(h)
+                elif url and url.startswith('http'):
+                    results.add(hashlib.md5(url.encode()).hexdigest())
+            return results
 
 
 async def scrape_brand(brand: str, url: str) -> list[dict]:
@@ -163,7 +172,7 @@ async def scrape_brand(brand: str, url: str) -> list[dict]:
         try:
             await Stealth().apply_stealth_async(page)
             print(f"[{brand}] 페이지 접속 중...")
-            await page.goto(url, wait_until="networkidle", timeout=60000)
+            await page.goto(url, wait_until="domcontentloaded", timeout=90000)
             await asyncio.sleep(5)
 
             # 쿠키 동의 클릭 (최초 1회만)
@@ -263,7 +272,8 @@ async def scrape_brand(brand: str, url: str) -> list[dict]:
                             print(f"[DEBUG] {brand} 필터에 막혀 버려짐: {norm}")
                         continue
 
-                    if norm in existing_urls:
+                    norm_hash = hashlib.md5(norm.encode()).hexdigest()
+                    if norm in existing_urls or norm_hash in existing_urls:
                         print(f"[{brand}] 이미 수집된 URL 발견 → 중단")
                         early_stop = True
                         break

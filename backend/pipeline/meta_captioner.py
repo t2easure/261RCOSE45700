@@ -41,7 +41,7 @@ async def run_meta_captioning(batch_size: int = 10000, since: str = None):
         print("✨ 처리할 포스트가 없습니다.")
         return
 
-    semaphore = asyncio.Semaphore(5)
+    semaphore = asyncio.Semaphore(15)
     tasks = [process_post(client, post, semaphore) for post in posts]
 
     print(f"\n🔄 2차 캡셔닝 시작 ({len(posts)}개)\n")

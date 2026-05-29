@@ -43,34 +43,41 @@ def _run_monthly_report():
     print(f"[Scheduler] 월간 리포트 생성: {start} ~ {end}")
     run_multi_agent_pipeline(days=30, start_date=str(start), end_date=str(end))
 
-def _run_crawl():
-    import asyncio
-    print("[Scheduler] 크롤링 시작...")
-    try:
+def _run_daily_crawl():
+    import threading
+    def _job():
+        import asyncio
         from crawlers.brand_scraper import run_brand_scraper
-        asyncio.run(run_brand_scraper())
-        print("[Scheduler] 브랜드 크롤링 완료")
-    except Exception as e:
-        print(f"[Scheduler] 브랜드 크롤링 오류: {e}")
-    try:
-        from crawlers.instagram_collector import run_instagram_collector
-        run_instagram_collector()
-        print("[Scheduler] 인스타그램 크롤링 완료")
-    except Exception as e:
-        print(f"[Scheduler] 인스타그램 크롤링 오류: {e}")
-
+        from crawlers.instagram_playwright import run_instagram_playwright
+        from pipeline.fashion_captioner import run_captioning
+        from pipeline.meta_captioner import run_meta_captioning
+        from pipeline.embedder import run_embedding
+        print("[Scheduler] 일일 크롤링 시작")
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        for coro, kwargs in [
+            (run_brand_scraper, {}),
+            (run_instagram_playwright, {}),
+            (run_captioning, {"batch_size": 200, "per_account": 50}),
+            (run_meta_captioning, {"batch_size": 200}),
+        ]:
+            loop.run_until_complete(coro(**kwargs))
+        loop.close()
+        run_embedding(batch_size=200)
+        print("[Scheduler] 일일 크롤링 완료")
+    threading.Thread(target=_job, daemon=True).start()
 
 @app.on_event("startup")
 def startup():
     init_db()
-    # 매일 새벽 2시 크롤링
-    scheduler.add_job(_run_crawl, CronTrigger(hour=2, minute=0), id="daily_crawl", replace_existing=True)
+    # 매일 새벽 2시 크롤링 + 파이프라인
+    scheduler.add_job(_run_daily_crawl, CronTrigger(hour=2, minute=0), id="daily_crawl", replace_existing=True)
     # 매주 월요일 새벽 3시 주간 리포트
     scheduler.add_job(_run_weekly_report, CronTrigger(day_of_week="mon", hour=3, minute=0), id="weekly_report", replace_existing=True)
-    # 매월 1일 새벽 4시 월간 리포트
-    scheduler.add_job(_run_monthly_report, CronTrigger(day=1, hour=4, minute=0), id="monthly_report", replace_existing=True)
+    # 매월 말일 새벽 4시 월간 리포트
+    scheduler.add_job(_run_monthly_report, CronTrigger(day='last', hour=4, minute=0), id="monthly_report", replace_existing=True)
     scheduler.start()
-    print("[Scheduler] 스케줄러 시작 — 크롤링 매일 02:00 / 주간 리포트 월요일 03:00 / 월간 리포트 1일 04:00")
+    print("[Scheduler] 스케줄러 시작 — 일일 크롤링 02:00 / 주간 리포트 월요일 03:00 / 월간 리포트 말일 04:00")
 
 
 @app.on_event("shutdown")
@@ -88,10 +95,9 @@ app.include_router(config_manager.router)
 @app.get("/stats")
 def stats():
     data = get_fashion_stats()
-    # 캡셔닝 완료 수 추가
     with _get_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT COUNT(*) FROM fashion_posts WHERE caption_ai IS NOT NULL")
+            cur.execute("SELECT COUNT(*) FROM fashion_posts WHERE caption_ai IS NOT NULL AND caption_ai != ''")
             data["captioned"] = cur.fetchone()[0]
             cur.execute("SELECT COUNT(*) FROM fashion_posts WHERE caption_meta IS NOT NULL")
             data["meta_captioned"] = cur.fetchone()[0]

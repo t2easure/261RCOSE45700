@@ -77,22 +77,6 @@ export default function CrawlButton({ onComplete }: CrawlButtonProps) {
         const isNewLog = pipelineLog && pipelineLog.run_at !== lastLogBefore
         if (isNewLog) {
           const newCount = (stats.total ?? 0) - beforeTotal
-
-          // 1차 캡셔닝
-          setMessage('크롤링 완료 → 1차 캡셔닝 중...')
-          await fetch('/api/pipeline/caption', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ since: crawlStartedAt }) })
-          await pollPipelineStatus()
-
-          // 2차 메타 캡셔닝
-          setMessage('크롤링 완료 → 2차 캡셔닝 중...')
-          await fetch('/api/pipeline/meta', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ since: crawlStartedAt }) })
-          await pollPipelineStatus()
-
-          // 임베딩
-          setMessage('크롤링 완료 → 임베딩 중...')
-          await fetch('/api/pipeline/embed', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ since: crawlStartedAt }) })
-          await pollPipelineStatus()
-
           setMessage(`완료! ${newCount > 0 ? `${newCount}건 새로 수집` : '새 데이터 없음'}`)
           setLoading(false)
           onComplete()
@@ -108,6 +92,12 @@ export default function CrawlButton({ onComplete }: CrawlButtonProps) {
       setMessage('크롤링 요청 중 오류가 발생했습니다.')
       setLoading(false)
     }
+  }
+
+  async function handleStop() {
+    await fetch('/api/crawl/stop', { method: 'POST' })
+    setMessage('중단 신호 전송됨')
+    setLoading(false)
   }
 
   return (
@@ -126,6 +116,14 @@ export default function CrawlButton({ onComplete }: CrawlButtonProps) {
           '지금 크롤링 실행'
         )}
       </button>
+      {loading && (
+        <button
+          onClick={handleStop}
+          className="px-4 py-2 bg-red-500 text-white text-sm font-medium rounded-lg hover:bg-red-600 transition-colors"
+        >
+          중단
+        </button>
+      )}
       {message && (
         <span
           className={`text-sm ${

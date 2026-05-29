@@ -1,6 +1,8 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
+import dynamic from 'next/dynamic'
+const TrendWordCloud = dynamic(() => import('@/components/TrendWordCloud'), { ssr: false })
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, RadarChart, Radar, PolarGrid, PolarAngleAxis } from 'recharts'
 import Navbar, { type Tab } from '@/components/Navbar'
 import SearchBar from '@/components/SearchBar'
@@ -145,6 +147,7 @@ export default function Home() {
   const [reportPostCount, setReportPostCount] = useState<number | null>(null)
   const [reportSubTab, setReportSubTab] = useState<'weekly' | 'monthly' | 'custom'>('weekly')
   const [lightbox, setLightbox] = useState<{ url: string; caption?: string } | null>(null)
+  const [heatmapDrill, setHeatmapDrill] = useState<{ cluster: TrendCluster; period: string } | null>(null)
 
   // 통계
   const [stats, setStats] = useState<Stats | null>(null)
@@ -284,11 +287,11 @@ export default function Home() {
     setReportGenerating(true)
     setReportStatusMessage(null)
     try {
-      await fetch('/api/fashion-reports/generate', {
+      fetch('/api/fashion-reports/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ days, start_date: reportDateFrom, end_date: reportDateTo }),
-      })
+      }).catch(() => {})
       const pollStatus = async (): Promise<void> => {
         try {
           const res = await fetch('/api/fashion-reports/generate/status')
@@ -606,7 +609,14 @@ export default function Home() {
               <p className="mt-2 text-sm text-brown-400">AI가 분석한 20대 여성 패션 트렌드 리포트</p>
             </div>
             {reportStatusMessage && (
-              <span className="text-xs text-brown-400">{reportStatusMessage}</span>
+              <div className="flex items-center gap-2">
+                {reportGenerating && (
+                  <span className="inline-block w-3.5 h-3.5 border-2 border-brown-400 border-t-transparent rounded-full animate-spin" />
+                )}
+                <span className={`text-xs font-medium ${reportStatusMessage.startsWith('오류') ? 'text-red-500' : reportStatusMessage.startsWith('✅') ? 'text-green-600' : 'text-brown-500'}`}>
+                  {reportStatusMessage}
+                </span>
+              </div>
             )}
           </div>
 
@@ -626,6 +636,83 @@ export default function Home() {
                   {label}
                 </button>
               ))}
+            </div>
+          )}
+
+          {/* 히트맵 드릴다운 모달 */}
+          {heatmapDrill && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => setHeatmapDrill(null)}>
+              <div className="relative bg-white rounded-2xl shadow-2xl max-w-md w-full max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+                <div className="sticky top-0 bg-white border-b border-brown-100 px-5 py-4 flex items-start justify-between gap-2">
+                  <div>
+                    <p className="font-bold text-base text-brown-800">{heatmapDrill.cluster.short_name ?? heatmapDrill.cluster.trend_name}</p>
+                    {heatmapDrill.cluster.short_name && <p className="text-[11px] text-brown-400 mt-0.5">{heatmapDrill.cluster.trend_name}</p>}
+                    <p className="text-[11px] text-brown-300 mt-0.5">{heatmapDrill.period} 주간</p>
+                  </div>
+                  <button onClick={() => setHeatmapDrill(null)} className="shrink-0 text-brown-400 hover:text-brown-700 text-xl font-bold mt-0.5">×</button>
+                </div>
+                <div className="p-5 space-y-4">
+                  {/* 수치 */}
+                  <div className="flex flex-wrap gap-3 text-[12px]">
+                    {heatmapDrill.cluster.signal_strength != null && <span className="font-bold text-brown-700">★ {heatmapDrill.cluster.signal_strength.toFixed(1)}</span>}
+                    <span className="text-brown-400">게시물 <b className="text-brown-600">{heatmapDrill.cluster.post_count}</b>개</span>
+                    {(heatmapDrill.cluster.avg_engagement_rate ?? 0) > 0 && <span className="text-brown-400">참여율 <b className="text-brown-600">{(heatmapDrill.cluster.avg_engagement_rate * 100).toFixed(1)}%</b></span>}
+                    {heatmapDrill.cluster.brand_ratio != null && <span className="text-brown-400">브랜드 <b className="text-brown-600">{(heatmapDrill.cluster.brand_ratio * 100).toFixed(0)}%</b></span>}
+                  </div>
+                  {/* 핵심 변화 */}
+                  {heatmapDrill.cluster.key_change && (
+                    <p className="rounded-lg bg-amber-50 border border-amber-100 px-3 py-2 text-[12px] text-amber-700 font-medium">{heatmapDrill.cluster.key_change}</p>
+                  )}
+                  {/* 대표 이미지 */}
+                  {heatmapDrill.cluster.representative_images?.length > 0 && (
+                    <div className="flex gap-1.5">
+                      {heatmapDrill.cluster.representative_images.slice(0, 3).map((url, j) => (
+                        <img key={j} src={url} className="h-32 w-0 flex-1 rounded-lg object-cover" onError={e => (e.currentTarget.style.display='none')} />
+                      ))}
+                    </div>
+                  )}
+                  {/* 설명 */}
+                  {heatmapDrill.cluster.description && (
+                    <p className="text-[12px] leading-5 text-brown-500">{heatmapDrill.cluster.description}</p>
+                  )}
+                  {/* 키워드 */}
+                  {heatmapDrill.cluster.keywords_v2 && (() => {
+                    const cats: [string, string[]][] = [
+                      ['무드', heatmapDrill.cluster.keywords_v2.mood],
+                      ['컬러', heatmapDrill.cluster.keywords_v2.color],
+                      ['실루엣', heatmapDrill.cluster.keywords_v2.silhouette],
+                      ['아이템', heatmapDrill.cluster.keywords_v2.item],
+                    ].filter(([, v]) => v?.length > 0) as [string, string[]][]
+                    return cats.length > 0 ? (
+                      <div className="space-y-1.5">
+                        {cats.map(([cat, vals]) => (
+                          <div key={cat} className="flex items-start gap-2">
+                            <span className="text-[10px] text-brown-300 w-10 shrink-0 pt-0.5">{cat}</span>
+                            <div className="flex flex-wrap gap-1">
+                              {vals.slice(0, 4).map(v => <span key={v} className="rounded-full bg-brown-50 px-2 py-0.5 text-[10px] text-brown-500">{v}</span>)}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null
+                  })()}
+                  {/* 인플루언서 */}
+                  {heatmapDrill.cluster.top_influencers?.length > 0 && (
+                    <div className="border-t border-brown-50 pt-3">
+                      <p className="text-[10px] text-brown-300 uppercase tracking-wide mb-2">Top Influencers</p>
+                      <div className="space-y-2">
+                        {heatmapDrill.cluster.top_influencers.slice(0, 3).map((inf, ii) => (
+                          <div key={ii} className="flex items-center gap-2">
+                            {inf.image_url && <img src={inf.image_url} className="w-7 h-7 rounded-full object-cover" onError={e => (e.currentTarget.style.display='none')} />}
+                            <span className="text-[12px] text-brown-700 font-medium">@{inf.account_name}</span>
+                            <span className="text-[11px] text-brown-400 ml-auto">{(inf.engagement_rate * 100).toFixed(1)}% eng</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
           )}
 
@@ -687,7 +774,11 @@ export default function Home() {
                           ))}
                         </div>
                       )}
-                      <p className="text-sm leading-7 text-brown-600 pt-2 border-t border-brown-50">{selectedReport.summary}</p>
+                      <div className="text-sm leading-7 text-brown-600 pt-2 border-t border-brown-50 space-y-2">
+                        {selectedReport.summary.split(/(?=\d\))/).filter(Boolean).map((line, i) => (
+                          <p key={i}>{line.trim()}</p>
+                        ))}
+                      </div>
                     </>
                   )
                 })()}
@@ -785,11 +876,11 @@ export default function Home() {
                         <span>= 게시물 수(0~3) + 인플루언서 참여율(0~3) + 브랜드 미진입(0~2) + 선행일수(0~2)</span>
                       </div>
                       <div className="flex flex-wrap gap-x-4 gap-y-1 pt-0.5 border-t border-brown-100">
-                        <span><span className="font-medium text-orange-500">🔥 지금 올라타 ≥8</span> — 반응 뜨겁고 아직 브랜드가 안 들어온 초기 트렌드</span>
-                        <span><span className="font-medium text-green-600">📈 뜨는 중 ≥5</span> — 볼륨과 참여율이 오르고 있는 성장 구간</span>
+                        <span><span className="font-medium text-orange-500">🔥 급부상 ≥8</span> — 반응 뜨겁고 아직 브랜드가 안 들어온 초기 트렌드</span>
+                        <span><span className="font-medium text-green-600">📈 뜨는 중 ≥5</span> — 게시물 수와 참여율이 오르고 있는 성장 구간</span>
                         <span><span className="font-medium text-yellow-600">⚠️ 이미 많음</span> — 브랜드 게시물 비율 40%↑, 이미 상업화된 트렌드</span>
-                        <span><span className="font-medium text-blue-400">👀 관망 3~5</span> — 볼륨은 있지만 참여율·브랜드 채택 데이터 불분명</span>
-                        <span><span className="font-medium text-stone-400">💤 미미함 &lt;3</span> — 볼륨·참여율 모두 낮아 아직 신호 약한 트렌드</span>
+                        <span><span className="font-medium text-blue-400">👀 관망 3~5</span> — 게시물은 있지만 참여율·브랜드 채택 데이터 불분명</span>
+                        <span><span className="font-medium text-stone-400">💤 미미함 &lt;3</span> — 게시물·참여율 모두 낮아 아직 신호 약한 트렌드</span>
                       </div>
                     </div>
                     {(() => {
@@ -814,10 +905,10 @@ export default function Home() {
                             const sig = sigLabel ? SIGNAL_META[sigLabel] : null
                             const hasBrandRatio = c.brand_ratio != null
                             const radarData = [
-                              { axis: '볼륨', value: Math.min((c.post_count / 50) * 100, 100) },
-                              { axis: '참여율', value: Math.min((c.avg_engagement_rate / 0.02) * 100, 100) },
-                              { axis: '미채택', value: Math.min((1 - brandRatio) * 100, 100) },
-                              { axis: '선행성', value: c.signal_strength != null ? Math.max(0, Math.min(((c.signal_strength - Math.min(c.post_count/50*3,3) - Math.min(c.avg_engagement_rate/0.02*3,3) - (hasBrandRatio ? (1-brandRatio)*2 : 0)) / 2) * 100, 100)) : 0 },
+                              { axis: '게시물 수', value: Math.min((c.post_count / 50) * 100, 100) },
+                              { axis: '인플 참여율', value: Math.min((c.avg_engagement_rate / 0.02) * 100, 100) },
+                              { axis: '브랜드 미진입', value: Math.min((1 - brandRatio) * 100, 100) },
+                              { axis: '선행 일수', value: c.signal_strength != null ? Math.max(0, Math.min(((c.signal_strength - Math.min(c.post_count/50*3,3) - Math.min(c.avg_engagement_rate/0.02*3,3) - (hasBrandRatio ? (1-brandRatio)*2 : 0)) / 2) * 100, 100)) : 0 },
                             ]
                             return (
                               <div key={i} className="rounded-2xl bg-white p-4 shadow-sm space-y-3">
@@ -891,7 +982,7 @@ export default function Home() {
                                         <div key={cat} className="flex items-start gap-2">
                                           <span className="text-[10px] text-brown-300 w-10 shrink-0 pt-0.5">{cat}</span>
                                           <div className="flex flex-wrap gap-1">
-                                            {vals.map(v => (
+                                            {vals.slice(0, 3).map(v => (
                                               <span key={v} className="rounded-full bg-brown-50 px-2 py-0.5 text-[10px] text-brown-500">{v}</span>
                                             ))}
                                           </div>
@@ -902,7 +993,12 @@ export default function Home() {
                                 })()}
 
                                 {c.description && (
-                                  <p className="text-[12px] leading-5 text-brown-500">{c.description}</p>
+                                  <details className="group">
+                                    <summary className="list-none cursor-pointer">
+                                      <p className="text-[12px] leading-5 text-brown-500 line-clamp-3 group-open:line-clamp-none">{c.description}</p>
+                                      <span className="text-[10px] text-brown-300 group-open:hidden">더 보기</span>
+                                    </summary>
+                                  </details>
                                 )}
 
                                 {/* 트렌드 지수 레이더 */}
@@ -921,7 +1017,7 @@ export default function Home() {
                                 {/* 소재 분포 */}
                                 {c.material_dist && c.material_dist.length > 0 && (
                                   <div className="border-t border-brown-50 pt-2">
-                                    <p className="text-[10px] text-brown-300 uppercase tracking-wide mb-1">소재</p>
+                                    <p className="text-[10px] text-brown-300 uppercase tracking-wide mb-1">소재 <span className="normal-case">(캡션 추정)</span></p>
                                     <div className="flex flex-wrap gap-1">
                                       {c.material_dist.slice(0, 4).map((m, mi) => (
                                         <span key={mi} className="rounded-full bg-brown-50 px-2 py-0.5 text-[11px] text-brown-500">
@@ -1119,79 +1215,235 @@ export default function Home() {
             return (
               <div className="space-y-6">
                 {/* 키워드 타임라인 + 시계열: weekly/monthly만 표시 */}
-                {reportSubTab !== 'custom' && <>
-                <div className="rounded-2xl bg-white p-6 shadow-sm">
-                  <p className="text-sm font-semibold text-brown-700 mb-1">트렌드 키워드 타임라인</p>
-                  <p className="text-xs text-brown-400 mb-5">같은 색 태그는 여러 리포트에 반복 등장한 키워드입니다</p>
-                  <div className="space-y-0">
-                    {sorted.map((r, ri) => {
-                      const kws: string[] = r.top_keywords
-                        ? (typeof r.top_keywords === 'string' ? JSON.parse(r.top_keywords) : r.top_keywords)
-                        : []
-                      const label = r.period_start
-                        ? `${r.period_start.slice(5, 10)} ~ ${r.period_end?.slice(5, 10)}`
-                        : r.period_end?.slice(0, 10) ?? r.created_at.slice(0, 10)
-                      return (
-                        <div key={r.id} className="flex items-start gap-4 group">
-                          {/* 타임라인 축 */}
-                          <div className="flex flex-col items-center w-28 shrink-0 pt-1">
-                            <span className="text-[11px] text-brown-500 font-medium whitespace-nowrap">{label}</span>
-                            {ri < sorted.length - 1 && (
-                              <div className="w-px flex-1 bg-brown-200 mt-1 min-h-[28px]" />
-                            )}
+                {reportSubTab === 'monthly' && (() => {
+                  const wordFreq: Record<string, number> = {}
+                  sorted.forEach(r => {
+                    const cs: TrendCluster[] = r.trend_clusters
+                      ? (typeof r.trend_clusters === 'string' ? JSON.parse(r.trend_clusters) : r.trend_clusters as TrendCluster[])
+                      : []
+                    cs.forEach(c => {
+                      const name = c.short_name ?? c.trend_name
+                      name.split(/\s+/).filter(w => w.length > 1).forEach(w => {
+                        wordFreq[w] = (wordFreq[w] ?? 0) + 1
+                      })
+                    })
+                  })
+                  const words = Object.entries(wordFreq).sort((a, b) => b[1] - a[1]).slice(0, 20)
+                  const maxFreq = words[0]?.[1] ?? 1
+
+                  // 월별 지속 트렌드
+                  const nameFreq: Record<string, number> = {}
+                  sorted.forEach(r => {
+                    const cs: TrendCluster[] = r.trend_clusters
+                      ? (typeof r.trend_clusters === 'string' ? JSON.parse(r.trend_clusters) : r.trend_clusters as TrendCluster[])
+                      : []
+                    cs.forEach(c => { const n = c.short_name ?? c.trend_name; nameFreq[n] = (nameFreq[n] ?? 0) + 1 })
+                  })
+                  const sustained = Object.entries(nameFreq).sort((a, b) => b[1] - a[1]).slice(0, 10)
+
+                  const parseClustersM = (rep: FashionReport): TrendCluster[] =>
+                    rep.trend_clusters ? (typeof rep.trend_clusters === 'string' ? JSON.parse(rep.trend_clusters) : rep.trend_clusters as TrendCluster[]) : []
+
+                  const nameCountM: Record<string, number> = {}
+                  sorted.forEach(r => parseClustersM(r).forEach(c => { const n = c.short_name ?? c.trend_name; nameCountM[n] = (nameCountM[n] ?? 0) + 1 }))
+                  const allMonthlyNames = [...new Set(sorted.flatMap(r => parseClustersM(r).map(c => c.short_name ?? c.trend_name)))].sort((a, b) => (nameCountM[b] ?? 0) - (nameCountM[a] ?? 0))
+                  const latestMonthlyClusters = parseClustersM(sorted[0] ?? sorted[sorted.length - 1])
+
+                  return (
+                    <div className="space-y-4">
+                      {/* 월간 트렌드 히트맵 */}
+                      {sorted.length > 0 && (
+                        <div className="rounded-2xl bg-white p-6 shadow-sm">
+                          <p className="text-sm font-semibold text-brown-700 mb-0.5">월별 TOP 트렌드</p>
+                          <p className="text-xs text-brown-400 mb-3">각 월 신호강도 기준 상위 트렌드</p>
+                          <div className="flex flex-wrap gap-3 mb-4">
+                            <span className="flex items-center gap-1.5 text-[11px] text-brown-400"><span className="w-2.5 h-2.5 rounded-full bg-orange-400 inline-block"/>급상승</span>
+                            <span className="flex items-center gap-1.5 text-[11px] text-brown-400"><span className="w-2.5 h-2.5 rounded-full bg-green-400 inline-block"/>성장중</span>
+                            <span className="flex items-center gap-1.5 text-[11px] text-brown-400"><span className="w-2.5 h-2.5 rounded-full bg-yellow-300 inline-block"/>주목</span>
+                            <span className="flex items-center gap-1.5 text-[11px] text-brown-400"><span className="w-2.5 h-2.5 rounded-full bg-stone-300 inline-block"/>약세</span>
                           </div>
-                          {/* 키워드 태그들 */}
-                          <div className="flex flex-wrap gap-2 pb-5 pt-0.5">
-                            {kws.map(kw => {
-                              const color = kwColor[kw]
-                              return color ? (
-                                <span key={kw} style={{ background: color.bg, color: color.text, borderColor: color.border }}
-                                  className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium border">
-                                  {kw}
-                                </span>
-                              ) : (
-                                <span key={kw}
-                                  className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-stone-100 text-stone-400 border border-stone-200">
-                                  {kw}
-                                </span>
+                          <div className="space-y-4">
+                            {[...sorted].reverse().map(r => {
+                              const clusters = parseClustersM(r)
+                                .filter(c => (c.signal_strength ?? 0) > 0)
+                                .sort((a, b) => (b.signal_strength ?? 0) - (a.signal_strength ?? 0))
+                                .slice(0, 5)
+                              if (!clusters.length) return null
+                              const period = r.period_start?.slice(0, 7) ?? ''
+                              return (
+                                <div key={r.id}>
+                                  <p className="text-[11px] font-semibold text-brown-400 mb-2">{period}</p>
+                                  <div className="flex flex-wrap gap-2">
+                                    {clusters.map((c, ci) => {
+                                      const sig = c.signal_strength ?? 0
+                                      const name = c.short_name ?? c.trend_name
+                                      const chipCls = sig >= 8 ? 'bg-orange-50 text-orange-600 border-orange-200' : sig >= 5 ? 'bg-green-50 text-green-700 border-green-200' : sig >= 3 ? 'bg-yellow-50 text-yellow-700 border-yellow-200' : 'bg-stone-50 text-stone-400 border-stone-200'
+                                      return (
+                                        <span key={ci} className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium ${chipCls}`}>
+                                          {name}
+                                        </span>
+                                      )
+                                    })}
+                                  </div>
+                                </div>
                               )
                             })}
                           </div>
                         </div>
-                      )
-                    })}
-                  </div>
-                </div>
+                      )}
 
-                {/* 시계열 차트 */}
-                <div className="rounded-2xl bg-white p-6 shadow-sm space-y-4">
-                  <p className="text-sm font-semibold text-brown-700">리포트 시계열 추이</p>
-                  <div>
-                    <p className="text-xs text-brown-400 mb-2">분석 포스트 수</p>
-                    <ResponsiveContainer width="100%" height={100}>
-                      <LineChart data={chartData}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#f0ebe4" />
-                        <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#a89880' }} />
-                        <YAxis tick={{ fontSize: 10, fill: '#a89880' }} width={35} />
-                        <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} />
-                        <Line type="monotone" dataKey="포스트수" stroke="#8b6f4e" strokeWidth={2} dot={{ r: 4 }} />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </div>
-                  <div>
-                    <p className="text-xs text-brown-400 mb-2">평균 트렌드 지수 (★ 0~10)</p>
-                    <ResponsiveContainer width="100%" height={100}>
-                      <LineChart data={chartData}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#f0ebe4" />
-                        <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#a89880' }} />
-                        <YAxis domain={[0, 10]} tick={{ fontSize: 10, fill: '#a89880' }} width={35} />
-                        <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} formatter={(v: number) => [`★ ${v}`]} />
-                        <Line type="monotone" dataKey="평균신호강도" stroke="#c07850" strokeWidth={2} dot={{ r: 4 }} connectNulls={false} />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </div>
-                </div>
-                </>}
+                      {/* 트렌드 신호강도 순위 */}
+
+                      {(words.length > 0 || sustained.length > 0) && (
+                        <div className="flex gap-4 items-start">
+                          {words.length > 0 && (
+                            <div className="rounded-2xl bg-white p-6 shadow-sm flex-1 min-w-0">
+                              <p className="text-sm font-semibold text-brown-700 mb-1">트렌드 키워드 빈도</p>
+                              <p className="text-xs text-brown-400 mb-4">클수록 더 많은 달에 등장한 키워드</p>
+                              <TrendWordCloud words={words.map(([text, value]) => ({ text, value }))} />
+                            </div>
+                          )}
+                          {sustained.length > 0 && (
+                            <div className="rounded-2xl bg-white p-6 shadow-sm w-72 shrink-0">
+                              <p className="text-sm font-semibold text-brown-700 mb-0.5">월간 지속 트렌드</p>
+                              <p className="text-xs text-brown-400 mb-4">반복 등장한 트렌드</p>
+                              <div className="divide-y divide-brown-50">
+                                {sustained.map(([name, cnt], i) => (
+                                  <div key={name} className="flex items-center justify-between py-2.5">
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-[11px] text-brown-300 w-4 text-right shrink-0">{i + 1}</span>
+                                      <span className="text-xs font-medium text-brown-800">{name}</span>
+                                    </div>
+                                    <span className="text-[11px] font-semibold text-brown-500 bg-cream-100 rounded-full px-2 py-0.5 shrink-0 ml-2">{cnt}개월</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })()}
+                {reportSubTab === 'weekly' && (() => {
+                  const weeklySorted = [...sorted].filter(r => {
+                    const d = r.period_start && r.period_end
+                      ? Math.round((new Date(r.period_end).getTime() - new Date(r.period_start).getTime()) / 86400000)
+                      : null
+                    return d === null || d < 20
+                  }).sort((a, b) => new Date(a.period_start ?? a.created_at).getTime() - new Date(b.period_start ?? b.created_at).getTime())
+
+                  const parseClustersLocal = (rep: FashionReport): TrendCluster[] =>
+                    rep.trend_clusters ? (typeof rep.trend_clusters === 'string' ? JSON.parse(rep.trend_clusters) : rep.trend_clusters as TrendCluster[]) : []
+
+                  // 히트맵 데이터 (등장 횟수 기준 정렬)
+                  const nameCountW: Record<string, number> = {}
+                  weeklySorted.forEach(r => parseClustersLocal(r).forEach(c => { const n = c.short_name ?? c.trend_name; nameCountW[n] = (nameCountW[n] ?? 0) + 1 }))
+                  const allNames = [...new Set(weeklySorted.flatMap(r => parseClustersLocal(r).map(c => c.short_name ?? c.trend_name)))].sort((a, b) => (nameCountW[b] ?? 0) - (nameCountW[a] ?? 0))
+                  const latestClusters = parseClustersLocal(weeklySorted[weeklySorted.length - 1] ?? sorted[0])
+
+                  return (
+                    <>
+                    {/* 주별 TOP 트렌드 */}
+                    {weeklySorted.length > 0 && (
+                      <div className="rounded-2xl bg-white p-6 shadow-sm">
+                        <p className="text-sm font-semibold text-brown-700 mb-0.5">주별 TOP 트렌드</p>
+                        <p className="text-xs text-brown-400 mb-3">각 주 신호강도 기준 상위 트렌드</p>
+                        <div className="flex flex-wrap gap-3 mb-4">
+                          <span className="flex items-center gap-1.5 text-[11px] text-brown-400"><span className="w-2.5 h-2.5 rounded-full bg-orange-400 inline-block"/>급상승</span>
+                          <span className="flex items-center gap-1.5 text-[11px] text-brown-400"><span className="w-2.5 h-2.5 rounded-full bg-green-400 inline-block"/>성장중</span>
+                          <span className="flex items-center gap-1.5 text-[11px] text-brown-400"><span className="w-2.5 h-2.5 rounded-full bg-yellow-300 inline-block"/>주목</span>
+                          <span className="flex items-center gap-1.5 text-[11px] text-brown-400"><span className="w-2.5 h-2.5 rounded-full bg-stone-300 inline-block"/>약세</span>
+                        </div>
+                        <div className="space-y-4">
+                          {[...weeklySorted].reverse().map(r => {
+                            const clusters = parseClustersLocal(r)
+                              .filter(c => (c.signal_strength ?? 0) > 0)
+                              .sort((a, b) => (b.signal_strength ?? 0) - (a.signal_strength ?? 0))
+                              .slice(0, 5)
+                            if (!clusters.length) return null
+                            const period = r.period_start ? `${r.period_start.slice(5,10)} ~ ${r.period_end?.slice(5,10) ?? ''}` : ''
+                            return (
+                              <div key={r.id}>
+                                <p className="text-[11px] font-semibold text-brown-400 mb-2">{period}</p>
+                                <div className="flex flex-wrap gap-2">
+                                  {clusters.map((c, ci) => {
+                                    const sig = c.signal_strength ?? 0
+                                    const name = c.short_name ?? c.trend_name
+                                    const chipCls = sig >= 8 ? 'bg-orange-50 text-orange-600 border-orange-200' : sig >= 5 ? 'bg-green-50 text-green-700 border-green-200' : sig >= 3 ? 'bg-yellow-50 text-yellow-700 border-yellow-200' : 'bg-stone-50 text-stone-400 border-stone-200'
+                                    return (
+                                      <span
+                                        key={ci}
+                                        className={`inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs font-medium cursor-pointer hover:opacity-75 transition-opacity ${chipCls}`}
+                                        onClick={() => setHeatmapDrill({ cluster: c, period: r.period_start?.slice(0,10) ?? '' })}
+                                      >
+                                        {name}
+                                        <span className="opacity-60 text-[10px]">{sig.toFixed(1)}</span>
+                                      </span>
+                                    )
+                                  })}
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+
+                    {/* 워드클라우드 + 주간 지속 트렌드 */}
+                    {(() => {
+                      const wordFreq: Record<string, number> = {}
+                      weeklySorted.forEach(r => {
+                        parseClustersLocal(r).forEach(c => {
+                          const name = c.short_name ?? c.trend_name
+                          name.split(/\s+/).filter(w => w.length > 1).forEach(w => { wordFreq[w] = (wordFreq[w] ?? 0) + 1 })
+                        })
+                      })
+                      const words = Object.entries(wordFreq).sort((a, b) => b[1] - a[1]).slice(0, 20)
+
+                      const weeklyNameFreq: Record<string, number> = {}
+                      weeklySorted.forEach(r => {
+                        parseClustersLocal(r).forEach(c => {
+                          const n = c.short_name ?? c.trend_name
+                          weeklyNameFreq[n] = (weeklyNameFreq[n] ?? 0) + 1
+                        })
+                      })
+                      const weeklySustained = Object.entries(weeklyNameFreq).sort((a, b) => b[1] - a[1]).slice(0, 10)
+
+                      if (!words.length && !weeklySustained.length) return null
+                      return (
+                        <div className="flex gap-4 items-start">
+                          {words.length > 0 && (
+                            <div className="rounded-2xl bg-white p-6 shadow-sm flex-1 min-w-0">
+                              <p className="text-sm font-semibold text-brown-700 mb-1">트렌드 키워드 빈도</p>
+                              <p className="text-xs text-brown-400 mb-4">클수록 더 많은 주에 등장한 키워드</p>
+                              <TrendWordCloud words={words.map(([text, value]) => ({ text, value }))} />
+                            </div>
+                          )}
+                          {weeklySustained.length > 0 && (
+                            <div className="rounded-2xl bg-white p-6 shadow-sm w-72 shrink-0">
+                              <p className="text-sm font-semibold text-brown-700 mb-0.5">주간 지속 트렌드</p>
+                              <p className="text-xs text-brown-400 mb-4">반복 등장한 트렌드</p>
+                              <div className="divide-y divide-brown-50">
+                                {weeklySustained.map(([name, cnt], i) => (
+                                  <div key={name} className="flex items-center justify-between py-2.5">
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-[11px] text-brown-300 w-4 text-right shrink-0">{i + 1}</span>
+                                      <span className="text-xs font-medium text-brown-800">{name}</span>
+                                    </div>
+                                    <span className="text-[11px] font-semibold text-brown-500 bg-cream-100 rounded-full px-2 py-0.5 shrink-0 ml-2">{cnt}주</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })()}
+                    </>
+                  )
+                })()}
                 {/* 서브탭별 콘텐츠 */}
                 {(() => {
                   const getPeriodDays = (r: FashionReport) =>
@@ -1237,7 +1489,7 @@ export default function Home() {
                     const periodDays = r.period_start && r.period_end
                       ? Math.round((new Date(r.period_end).getTime() - new Date(r.period_start).getTime()) / 86400000)
                       : null
-                    const periodTag = periodDays === null ? null : periodDays >= 20 ? '월간' : '주간'
+                    const periodTag = periodDays === null ? null : periodDays >= 28 && periodDays <= 35 ? '월간' : periodDays < 10 ? '주간' : null
 
                     // 리포트 평균 신호강도
                     const avgSignal = clusters.length > 0 && clusters[0].signal_strength !== undefined
@@ -1258,89 +1510,118 @@ export default function Home() {
                       return '→'
                     }
 
+                    // 대표 이미지, 신호 라벨, 브랜드 상태
+                    const thumbUrl = clusters[0]?.representative_images?.[0] ?? null
+                    const topCluster = clusters[0]
+                    const signalLabel = topCluster?.signal_label
+                    const signalBadge = signalLabel === 'opportunity' ? { text: '🔥 급부상', cls: 'bg-orange-100 text-orange-600' }
+                      : signalLabel === 'growing' ? { text: '📈 뜨는 중', cls: 'bg-green-100 text-green-600' }
+                      : signalLabel === 'saturated' ? { text: '⚠️ 브랜드 포화', cls: 'bg-yellow-100 text-yellow-700' }
+                      : signalLabel === 'weak' ? { text: '💤 미미함', cls: 'bg-stone-100 text-stone-400' }
+                      : null
+                    const brandNotIn = topCluster?.brand_ratio !== undefined && topCluster.brand_ratio < 0.05 && signalLabel !== 'saturated'
+                    const cardTitle = clusters[0]?.short_name
+                      ? clusters[0].short_name
+                      : keywords.length > 0
+                        ? (() => {
+                            const freq: Record<string, number> = {}
+                            keywords.forEach(kw => kw.split(/\s+/).forEach(w => { if (w.length > 1) freq[w] = (freq[w] ?? 0) + 1 }))
+                            return Object.entries(freq).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([w]) => w).join(' · ')
+                          })()
+                        : '트렌드 리포트'
+
+                    // 대표 이미지 3장
+                    const thumbUrls = clusters.slice(0, 3).map(c => c.representative_images?.[0]).filter(Boolean) as string[]
+
                     return (
-                      <div className="flex w-full items-center gap-2 rounded-2xl bg-white px-4 py-4 shadow-sm transition hover:shadow-md">
-                        <button className="flex flex-1 items-start text-left min-w-0" onClick={() => setSelectedReport(r)}>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-0.5">
-                              <p className="text-[11px] text-brown-300">{periodStr}</p>
-                              {periodTag && (
-                                <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${periodTag === '월간' ? 'bg-blue-100 text-blue-500' : 'bg-green-100 text-green-600'}`}>
-                                  {periodTag}
-                                </span>
-                              )}
-                              {maxSignal !== null && (
-                                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
-                                  maxSignal >= 8 ? 'bg-orange-100 text-orange-600' :
-                                  maxSignal >= 5 ? 'bg-green-100 text-green-600' :
-                                  maxSignal >= 3 ? 'bg-yellow-100 text-yellow-600' :
-                                  'bg-stone-100 text-stone-400'
-                                }`}>★ {maxSignal.toFixed(1)}</span>
-                              )}
-                            </div>
-                            <p className="text-sm font-semibold text-brown-800 leading-snug">
-                              {reportSubTab === 'monthly' && clusters[0]
-                                ? (clusters[0].short_name ?? clusters[0].trend_name)
-                                : (keywords[0] ?? '트렌드 리포트')}
-                            </p>
-                            {reportSubTab === 'monthly' && clusterStreaks.length > 0 ? (
-                              <div className="flex flex-col gap-1 mt-1.5">
-                                {clusterStreaks.map(({ name, streak }) => (
-                                  <div key={name} className="flex items-center gap-2">
-                                    <span className="text-[11px] text-brown-600 truncate max-w-[140px]">{name}</span>
-                                    {streak > 0 && (
-                                      <span className="text-[10px] font-semibold text-blue-500 shrink-0">{streak}주 등장</span>
-                                    )}
-                                  </div>
-                                ))}
-                              </div>
-                            ) : keywords.length > 0 && (
-                              <div className="flex flex-wrap gap-1 mt-1.5">
-                                {keywords.slice(0, 4).map((k, i) => {
-                                  const change = getRankChange(k)
-                                  return (
-                                    <span key={i} className="inline-flex items-center gap-0.5 rounded-full bg-cream-200 px-2 py-0.5 text-[10px] text-brown-500">
-                                      {k}
-                                      {prevKeywords.length > 0 && (
-                                        <span className={`font-bold text-[9px] ${
-                                          change === 'new' ? 'text-blue-500' :
-                                          change.startsWith('↑') ? 'text-green-500' :
-                                          change.startsWith('↓') ? 'text-red-400' : 'text-brown-300'
-                                        }`}>{change === 'new' ? 'NEW' : change}</span>
-                                      )}
-                                    </span>
-                                  )
-                                })}
-                              </div>
-                            )}
-                            <p className="mt-1.5 text-[11px] text-brown-300">{r.post_count}개 분석</p>
-                          </div>
-                        </button>
+                      <div className="relative rounded-2xl bg-white shadow-sm overflow-hidden transition hover:shadow-md flex flex-col">
+                        {/* 삭제 버튼 */}
                         <button
-                          onClick={async () => {
+                          onClick={async (e) => {
+                            e.stopPropagation()
                             if (!confirm('이 리포트를 삭제할까요?')) return
                             await fetch(`/api/fashion-reports/${r.id}`, { method: 'DELETE' })
                             fetchReports()
                           }}
-                          className="shrink-0 rounded-lg p-1.5 text-xs text-brown-200 hover:bg-red-50 hover:text-red-400 transition-colors"
+                          className="absolute top-2 right-2 z-10 rounded-full bg-white/80 p-1 text-xs text-brown-300 hover:bg-red-50 hover:text-red-400 transition-colors"
                         >✕</button>
+
+                        {/* 이미지 영역 */}
+                        <button className="text-left" onClick={() => setSelectedReport(r)}>
+                          <div className="flex h-36 gap-0.5 bg-cream-100">
+                            {thumbUrls.length === 0 && (
+                              <div className="flex-1 flex items-center justify-center text-brown-200 text-xs">이미지 없음</div>
+                            )}
+                            {thumbUrls.length === 1 && (
+                              <img src={thumbUrls[0]} alt="" className="w-full h-full object-cover object-top" />
+                            )}
+                            {thumbUrls.length === 2 && thumbUrls.map((u, i) => (
+                              <img key={i} src={u} alt="" className="w-1/2 h-full object-cover object-top" />
+                            ))}
+                            {thumbUrls.length >= 3 && (
+                              <>
+                                <img src={thumbUrls[0]} alt="" className="w-1/2 h-full object-cover object-top" />
+                                <div className="flex flex-col gap-0.5 w-1/2">
+                                  <img src={thumbUrls[1]} alt="" className="w-full h-1/2 object-cover object-top" />
+                                  <img src={thumbUrls[2]} alt="" className="w-full h-1/2 object-cover object-top" />
+                                </div>
+                              </>
+                            )}
+                          </div>
+
+                          {/* 정보 영역 */}
+                          <div className="p-3">
+                            <div className="flex flex-wrap items-center gap-1 mb-1.5">
+                              <p className="text-[10px] text-brown-300">{periodStr}</p>
+                              {periodTag && (
+                                <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-semibold ${periodTag === '월간' ? 'bg-blue-100 text-blue-500' : 'bg-green-100 text-green-600'}`}>
+                                  {periodTag}
+                                </span>
+                              )}
+                              {signalBadge && (
+                                <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-semibold ${signalBadge.cls}`}>{signalBadge.text}</span>
+                              )}
+                              {brandNotIn && (
+                                <span className="rounded-full bg-purple-50 px-1.5 py-0.5 text-[9px] font-semibold text-purple-500">브랜드 미진입</span>
+                              )}
+                            </div>
+                            <p className="text-sm font-semibold text-brown-800 leading-snug">{cardTitle}</p>
+                            {reportSubTab === 'monthly' && clusterStreaks.filter(s => s.streak > 0).length > 0 ? (
+                              <div className="flex flex-wrap gap-1 mt-1.5">
+                                {clusterStreaks.filter(s => s.streak > 0).map(({ name, streak }) => (
+                                  <span key={name} className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-[9px] text-blue-600 font-medium">
+                                    {name} · {streak}주
+                                  </span>
+                                ))}
+                              </div>
+                            ) : clusters.slice(0, 2).length > 0 && (
+                              <div className="flex flex-wrap gap-1 mt-1.5">
+                                {clusters.slice(0, 2).map((c, i) => (
+                                  <span key={i} className="rounded-full bg-cream-200 px-2 py-0.5 text-[9px] text-brown-500">
+                                    {c.short_name ?? c.trend_name}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </button>
                       </div>
                     )
                   }
 
                   if (reportSubTab === 'weekly') return (
-                    <div className="space-y-2">
+                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                       {weekly.length === 0
-                        ? <p className="text-xs text-brown-300 text-center py-12">주간 리포트 없음</p>
+                        ? <p className="col-span-3 text-xs text-brown-300 text-center py-12">주간 리포트 없음</p>
                         : weekly.map(r => <ReportCard key={r.id} r={r} />)
                       }
                     </div>
                   )
 
                   if (reportSubTab === 'monthly') return (
-                    <div className="space-y-2">
+                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                       {monthly.length === 0
-                        ? <p className="text-xs text-brown-300 text-center py-12">월간 리포트 없음</p>
+                        ? <p className="col-span-3 text-xs text-brown-300 text-center py-12">월간 리포트 없음</p>
                         : monthly.map(r => <ReportCard key={r.id} r={r} />)
                       }
                     </div>
@@ -1395,13 +1676,19 @@ export default function Home() {
                           </button>
                         </div>
                       </div>
-                      {/* 커스텀 리포트 목록 (전체, 최신순) */}
-                      <div className="space-y-2">
-                        {reports.length === 0
-                          ? <p className="text-xs text-brown-300 text-center py-8">아직 생성된 리포트 없음</p>
-                          : reports.map(r => <ReportCard key={r.id} r={r} />)
-                        }
-                      </div>
+                      {/* 커스텀 리포트 목록 (주간/월간 아닌 것) */}
+                      {(() => {
+                        const customReports = reports.filter(r => {
+                          const d = getPeriodDays(r)
+                          return d !== null && d >= 10 && d < 28
+                        })
+                        if (customReports.length === 0) return null
+                        return (
+                          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                            {customReports.map(r => <ReportCard key={r.id} r={r} />)}
+                          </div>
+                        )
+                      })()}
                     </div>
                   )
                 })()}

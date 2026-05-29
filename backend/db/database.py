@@ -125,6 +125,14 @@ def init_db() -> None:
                 )
                 """
             )
+            for col, coltype in [
+                ("trend_clusters", "TEXT"),
+                ("engagement_top", "TEXT"),
+                ("lead_signals", "TEXT"),
+            ]:
+                cur.execute(f"""
+                    ALTER TABLE fashion_reports ADD COLUMN IF NOT EXISTS {col} {coltype}
+                """)
         conn.commit()
 
 
@@ -162,27 +170,36 @@ def save_fashion_posts(items: list[dict]) -> int:
     return inserted
 
 
-def get_uncaptioned_posts(limit: int = 100, per_account: int = 50, since: str = None) -> list[dict]:
-    """caption_ai 없는 패션 포스팅 조회 (계정당 최대 per_account개)."""
-    since_clause = "AND collected_at >= %s" if since else ""
+def get_uncaptioned_posts(limit: int = 100, per_account: int = 50, since: str = None, empty_only: bool = False) -> list[dict]:
+    """caption_ai 없는 패션 포스팅 조회."""
+    # since가 있으면 쿼리에 조건 추가
+    if empty_only:
+        where_clause = "WHERE caption_ai = '' AND image_url IS NOT NULL"
+    else:
+        where_clause = "WHERE (caption_ai IS NULL OR caption_ai = '') AND image_url IS NOT NULL"
+    if since:
+        where_clause += " AND collected_at >= %s"
+    
+    query = f"""
+        SELECT id, image_url, account_name, source
+        FROM (
+            SELECT id, image_url, account_name, source,
+                   ROW_NUMBER() OVER (PARTITION BY account_name ORDER BY id) AS rn
+            FROM fashion_posts
+            {where_clause}
+        ) sub
+        WHERE rn <= %s
+        LIMIT %s
+    """
+    
+    # 전달할 파라미터 구성
+    params = [since] if since else []
+    params.extend([per_account, limit])
+    
     with _get_connection() as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute(
-                f"""
-                SELECT id, image_url, account_name, source
-                FROM (
-                    SELECT id, image_url, account_name, source,
-                           ROW_NUMBER() OVER (PARTITION BY account_name ORDER BY id) AS rn
-                    FROM fashion_posts
-                    WHERE caption_ai IS NULL AND image_url IS NOT NULL {since_clause}
-                ) sub
-                WHERE rn <= %s
-                LIMIT %s
-                """,
-                ((since, per_account, limit) if since else (per_account, limit)),
-            )
+            cur.execute(query, tuple(params))
             return [dict(row) for row in cur.fetchall()]
-
 
 def delete_post(post_id: int) -> None:
     with _get_connection() as conn:
@@ -668,28 +685,45 @@ def save_caption_meta(post_id: int, meta: str) -> None:
         conn.commit()
 
 
-def save_fashion_report(summary: str, top_keywords: list, style_trends: list, post_count: int, days: int = 30) -> int:
-    """LangGraph 파이프라인 결과를 fashion_reports 테이블에 저장. 저장된 id 반환."""
+def save_fashion_report(
+    summary: str,
+    top_keywords: list,
+    style_trends: list,
+    post_count: int,
+    days: int = 30,
+    start_date: str = None,
+    end_date: str = None,
+    trend_clusters: list = None,
+    engagement_top: list = None,
+    lead_signals: list = None,
+) -> int:
+    """리포트 저장. 저장된 id 반환."""
     from datetime import datetime, timezone, timedelta
     now = datetime.now(timezone.utc)
-    period_start = (now - timedelta(days=days)).strftime("%Y-%m-%d") if days > 0 else None
-    period_end = now.strftime("%Y-%m-%d")
+    if start_date and end_date:
+        period_start = start_date
+        period_end = end_date
+    else:
+        period_start = (now - timedelta(days=days)).strftime("%Y-%m-%d") if days > 0 else None
+        period_end = now.strftime("%Y-%m-%d")
     with _get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """
                 INSERT INTO fashion_reports
-                    (period_start, period_end, summary, top_keywords, style_trends, post_count)
-                VALUES (%s, %s, %s, %s, %s, %s)
+                    (period_start, period_end, summary, top_keywords, style_trends,
+                     post_count, trend_clusters, engagement_top, lead_signals)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
                 """,
                 (
-                    period_start,
-                    period_end,
-                    summary,
+                    period_start, period_end, summary,
                     json.dumps(top_keywords, ensure_ascii=False),
                     json.dumps(style_trends, ensure_ascii=False),
                     post_count,
+                    json.dumps(trend_clusters, ensure_ascii=False) if trend_clusters else None,
+                    json.dumps(engagement_top, ensure_ascii=False) if engagement_top else None,
+                    json.dumps(lead_signals, ensure_ascii=False) if lead_signals else None,
                 ),
             )
             report_id = cur.fetchone()[0]
