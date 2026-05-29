@@ -25,8 +25,16 @@ CAPTION_PROMPT = """이 이미지를 분석해줘.
 - 남성복, 아동복
 - 음식, 풍경, 인테리어 등 패션 무관 이미지
 
-실제 사람이 착용한 여성 패션 이미지라면 실루엣, 소재, 컬러, 스타일, 아이템을 포함해 3~4문장의 전문 용어로 한국어 캡션을 작성해줘.
-마크다운 기호(#, **, * 등)나 특수문자 없이 일반 텍스트로만 작성해줘."""
+실제 사람이 착용한 여성 패션 이미지라면 아래 형식으로 작성해줘.
+마크다운 기호(#, **, * 등)나 특수문자 없이 일반 텍스트로만 작성해줘.
+
+[스타일] 전체적인 스타일 분위기 (예: 미니멀 캐주얼, 페미닌 로맨틱, 스트리트 캐주얼)
+[실루엣] 핏과 실루엣 (예: 오버사이즈, 슬림핏, A라인, 와이드)
+[컬러] 주요 색상 (예: 아이보리, 블랙, 베이지, 카키)
+[소재] 소재 추정 (예: 코튼, 린넨, 니트, 데님, 시폰)
+[아이템] 착용 아이템 목록 (예: 와이드팬츠, 크롭티, 오버사이즈 재킷)
+[디테일] 눈에 띄는 디테일 (예: 버튼 디테일, 러플, 절개선, 프린트)
+[설명] 위 요소를 종합한 2문장 설명"""
 
 async def get_image_base64(client, url: str):
     if not url:
@@ -82,7 +90,7 @@ async def process_post(ant_client, http_client, post, semaphore, retries=3):
             try:
                 response = await ant_client.messages.create(
                     model="claude-haiku-4-5-20251001",
-                    max_tokens=400,
+                    max_tokens=600,
                     messages=[{"role": "user", "content": [
                         {"type": "image", "source": {"type": "base64", "media_type": media_type, "data": base64_data}},
                         {"type": "text", "text": CAPTION_PROMPT}
