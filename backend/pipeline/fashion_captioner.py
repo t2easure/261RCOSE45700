@@ -34,32 +34,25 @@ CAPTION_PROMPT = """이 이미지를 분석해줘.
 [소재] 소재 추정 (예: 코튼, 린넨, 니트, 데님, 시폰)
 [아이템] 착용 아이템 목록 (예: 와이드팬츠, 크롭티, 오버사이즈 재킷)
 [디테일] 눈에 띄는 디테일 (예: 버튼 디테일, 러플, 절개선, 프린트)
-[설명] 위 요소를 종합한 2문장 설명"""
+[설명] 위 요소를 종합한 2문장 설명
 
-def parse_structured_caption(text: str) -> dict:
-    """구조화된 캡션 텍스트를 카테고리별로 파싱."""
-    if not text or text.strip() == "SKIP":
-        return {}
+출력 예시:
+[스타일] 미니멀 캐주얼
+[실루엣] 오버사이즈
+[컬러] 아이보리, 베이지
+[소재] 코튼, 린넨
+[아이템] 와이드 사이드 드레스, 크롭 반팔티, 크로스백
+[디테일] 히치하이 배색, 루즈핏
+[설명] 기본 아이템들에 히치하이 조합으로 완성한 미니멀 캐주얼 스타일입니다. 오버사이즈 실루엣과 린넨 소재로 편안하면서도 세련된 여름 룩을 연출했습니다.
 
-    import re
-    result = {}
-    category_map = {
-        "스타일": "style",
-        "실루엣": "silhouette",
-        "컬러": "color",
-        "소재": "material",
-        "아이템": "item",
-        "디테일": "detail",
-        "설명": "description",
-    }
-
-    for kor, eng in category_map.items():
-        pattern = rf'\[{kor}\]\s*(.+?)(?=\[|$)'
-        match = re.search(pattern, text, re.DOTALL)
-        if match:
-            result[eng] = match.group(1).strip()
-
-    return result
+출력 예시 2:
+[스타일] 페미닌 로맨틱
+[실루엣] A라인, 플레어
+[컬러] 화이트, 핑크
+[소재] 시폰, 레이스
+[아이템] 플레어 미디 스커트, 레이스 블라우스, 스트링 백
+[디테일] 러플 디테일, 레이스 트리밍
+[설명] 시폰 소재의 플레어 스커트와 레이스 블라우스로 완성한 페미닌 로맨틱 스타일입니다. 화이트와 핑크의 배색이 부드럽고 여성스러운 분위기를 연출합니다."""
 
 
 async def get_image_base64(client, url: str):
