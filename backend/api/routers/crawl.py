@@ -35,7 +35,6 @@ def run_crawl(background_tasks: BackgroundTasks):
     def _run():
         import threading
         from crawlers.brand_scraper import run_brand_scraper
-        from crawlers.instagram_collector import run_instagram_collector
         from datetime import datetime, timezone
         _set("running", "브랜드 스크래핑 중...")
         try:
