@@ -284,7 +284,11 @@ def search_fashion_posts(
     accounts: list[str] | None = None,
     keywords: list[str] | None = None,
 ) -> list[dict]:
-    """하이브리드(벡터 + 키워드) 패션 이미지 검색."""
+    """RRF 기반 하이브리드(벡터 + 키워드) 패션 이미지 검색."""
+    
+    RRF_K = 60
+    CANDIDATE_SIZE = limit * 5  # 후보군은 넉넉하게
+    
     conditions = ["embedding IS NOT NULL"]
     filter_params: list[Any] = []
 
@@ -299,42 +303,63 @@ def search_fashion_posts(
         filter_params.append(accounts)
 
     where = "WHERE " + " AND ".join(conditions)
-
-    if keywords:
-        kw_cases = " + ".join(
-            "CASE WHEN lower(caption_ai) LIKE lower(%s) THEN 1 ELSE 0 END"
-            for _ in keywords
-        )
-        kw_params = [f"%{kw}%" for kw in keywords]
-        score_expr = f"(1 - (embedding <=> %s::vector)) * 0.7 + ({kw_cases})::float / {len(keywords)} * 0.3"
-        sql = f"""
-            SELECT * FROM (
-                SELECT id, image_url, account_name, source, posted_at, caption_ai, caption_meta,
-                       {score_expr} AS similarity
-                FROM fashion_posts
-                {where}
-            ) sub
-            ORDER BY similarity DESC
-            LIMIT %s
-        """
-        exec_params = [query_embedding] + kw_params + filter_params + [limit]
-    else:
-        sql = f"""
-            SELECT * FROM (
-                SELECT id, image_url, account_name, source, posted_at, caption_ai, caption_meta,
-                       1 - (embedding <=> %s::vector) AS similarity
-                FROM fashion_posts
-                {where}
-            ) sub
-            ORDER BY similarity DESC
-            LIMIT %s
-        """
-        exec_params = [query_embedding] + filter_params + [limit]
+    
+    select_cols = "id, image_url, post_url, account_name, source, posted_at, caption_ai, caption_meta"
 
     with _get_connection() as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute(sql, exec_params)
-            return [dict(row) for row in cur.fetchall()]
+            
+            # 1. 벡터 검색
+            cur.execute(f"""
+                SELECT {select_cols},
+                       1 - (embedding <=> %s::vector) AS vec_score
+                FROM fashion_posts {where}
+                ORDER BY vec_score DESC
+                LIMIT %s
+            """, [query_embedding] + filter_params + [CANDIDATE_SIZE])
+            vec_results = [dict(r) for r in cur.fetchall()]
+            
+            # 2. 키워드 검색 (키워드 있을 때만)
+            kw_results = []
+            if keywords:
+                kw_cases = " + ".join(
+                    "CASE WHEN lower(caption_ai) LIKE lower(%s) THEN 1 ELSE 0 END"
+                    for _ in keywords
+                )
+                kw_params = [f"%{kw}%" for kw in keywords]
+                cur.execute(f"""
+                    SELECT {select_cols},
+                           ({kw_cases})::float / {len(keywords)} AS kw_score
+                    FROM fashion_posts {where}
+                    ORDER BY kw_score DESC
+                    LIMIT %s
+                """, kw_params + filter_params + [CANDIDATE_SIZE])
+                kw_results = [dict(r) for r in cur.fetchall()]
+
+    # 3. RRF 계산
+    rrf_scores: dict[int, float] = {}
+    all_docs: dict[int, dict] = {}
+
+    for rank, doc in enumerate(vec_results, start=1):
+        doc_id = doc["id"]
+        rrf_scores[doc_id] = rrf_scores.get(doc_id, 0) + 1 / (RRF_K + rank)
+        all_docs[doc_id] = doc
+
+    for rank, doc in enumerate(kw_results, start=1):
+        doc_id = doc["id"]
+        rrf_scores[doc_id] = rrf_scores.get(doc_id, 0) + 1 / (RRF_K + rank)
+        if doc_id not in all_docs:
+            all_docs[doc_id] = doc
+
+    # 4. 최종 정렬 및 반환
+    sorted_ids = sorted(rrf_scores, key=lambda x: rrf_scores[x], reverse=True)[:limit]
+    results = []
+    for doc_id in sorted_ids:
+        doc = all_docs[doc_id]
+        doc["similarity"] = round(rrf_scores[doc_id], 6)
+        results.append(doc)
+    
+    return results
 
 
 def get_fashion_accounts() -> list[str]:
