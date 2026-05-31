@@ -9,6 +9,11 @@ interface ImageCardProps {
   postedAt: string | null
   captionAi: string | null
   similarity?: number
+  postUrl?: string | null
+  price?: number | null
+  materialInfo?: string | null
+  likes?: number | null
+  followers?: number | null
 }
 
 const SOURCE_LABELS: Record<string, string> = {
@@ -17,14 +22,14 @@ const SOURCE_LABELS: Record<string, string> = {
   youtube:   'YouTube',
 }
 
-export default function ImageCard({ imageUrl, accountName, source, postedAt, captionAi, similarity }: ImageCardProps) {
+export default function ImageCard({ imageUrl, accountName, source, postedAt, captionAi, similarity, postUrl, price, materialInfo, likes, followers }: ImageCardProps) {
   const [imgError, setImgError] = useState(false)
   const dateStr = postedAt
     ? new Date(postedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
     : ''
 
   return (
-    <div className="group overflow-hidden rounded-2xl bg-white shadow-sm transition hover:shadow-md">
+    <div className={`group overflow-hidden rounded-2xl bg-white shadow-sm transition hover:shadow-md ${postUrl ? 'cursor-pointer' : ''}`} onClick={() => postUrl && window.open(postUrl, '_blank')}>
       <div className="relative aspect-[3/4] overflow-hidden bg-cream-200">
         {imgError ? (
           <div className="flex h-full w-full flex-col items-center justify-center gap-1 text-brown-300">
@@ -56,6 +61,15 @@ export default function ImageCard({ imageUrl, accountName, source, postedAt, cap
           <span className="text-xs font-semibold text-brown-700">@{accountName}</span>
           {dateStr && <span className="text-[10px] text-brown-300">{dateStr}</span>}
         </div>
+        {price != null && (
+          <p className="text-xs font-semibold text-brown-800">₩{price.toLocaleString()}</p>
+        )}
+        {materialInfo && (
+          <p className="text-[10px] text-brown-400 truncate" title={materialInfo}>{materialInfo}</p>
+        )}
+        {likes != null && followers != null && followers > 0 && (
+          <p className="text-[10px] text-brown-400">❤ {likes.toLocaleString()} · {((likes / followers) * 100).toFixed(1)}%</p>
+        )}
         {captionAi && (
           <div className="relative">
             <p className="line-clamp-2 text-[11px] leading-5 text-brown-500">{captionAi}</p>

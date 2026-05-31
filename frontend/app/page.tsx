@@ -16,6 +16,11 @@ interface Post {
   source: string
   posted_at: string | null
   caption_ai: string | null
+  post_url?: string | null
+  price?: number | null
+  material_info?: string | null
+  likes?: number | null
+  followers?: number | null
 }
 
 interface SearchResult extends Post {
@@ -77,6 +82,8 @@ interface EngagementPost {
   comments: number
   followers: number
   engagement_rate: number
+  post_url?: string | null
+  price?: number | null
 }
 
 interface LeadSignal {
@@ -397,6 +404,11 @@ export default function Home() {
                     source={p.source}
                     postedAt={p.posted_at}
                     captionAi={p.caption_ai}
+                    postUrl={p.post_url}
+                    price={p.price}
+                    materialInfo={p.material_info}
+                    likes={p.likes}
+                    followers={p.followers}
                   />
                 ))}
               </div>
@@ -1124,19 +1136,19 @@ export default function Home() {
                     <p className="text-xs text-brown-400">팔로워 대비 (좋아요 + 댓글) 비율이 가장 높은 게시물입니다. 실제 소비자 반응이 뜨거운 스타일을 한눈에 확인하세요.</p>
                     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5 pt-1">
                       {posts.map((p, i) => (
-                        <div key={p.id} className="rounded-2xl bg-white shadow-sm overflow-hidden flex flex-col">
+                        <div key={p.id} className="rounded-2xl bg-white shadow-sm overflow-hidden flex flex-col cursor-pointer" onClick={() => p.post_url ? window.open(p.post_url, '_blank') : setLightbox({ url: p.image_url, caption: p.caption_ai ?? undefined })}>
                           <div className="relative">
                             <img
                               src={p.image_url}
-                              className="w-full aspect-[3/4] object-cover cursor-pointer hover:opacity-80 transition-opacity"
+                              className="w-full aspect-[3/4] object-cover hover:opacity-80 transition-opacity"
                               title={p.caption_ai ?? undefined}
-                              onClick={() => setLightbox({ url: p.image_url, caption: p.caption_ai ?? undefined })}
                               onError={e => (e.currentTarget.style.display='none')}
                             />
                             <span className="absolute top-2 left-2 bg-black/50 text-white text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center">{i+1}</span>
                           </div>
                           <div className="p-2.5 flex flex-col gap-1 flex-1">
                             <p className="text-[11px] font-semibold text-brown-700">@{p.account_name}</p>
+                            {p.price != null && <p className="text-xs font-semibold text-brown-800">₩{p.price.toLocaleString()}</p>}
                             <p className="text-[10px] text-brown-500 leading-4 line-clamp-2 flex-1">{p.caption_ai}</p>
                             <div className="border-t border-brown-50 pt-1.5 mt-1">
                               <p className="text-sm font-bold text-brown-800">{(p.engagement_rate * 100).toFixed(1)}%</p>
@@ -1748,6 +1760,11 @@ export default function Home() {
                     source={p.source}
                     postedAt={p.posted_at}
                     captionAi={p.caption_ai}
+                    postUrl={p.post_url}
+                    price={p.price}
+                    materialInfo={p.material_info}
+                    likes={p.likes}
+                    followers={p.followers}
                   />
                 ))}
               </div>

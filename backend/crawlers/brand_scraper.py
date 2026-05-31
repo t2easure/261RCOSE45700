@@ -72,11 +72,20 @@ NOISE_PATTERNS = [
     'transparent-background', 'introapp_floating', 'site-brand', 'bt_ftc'
 ]
 
+# 브랜드별 상품 URL 패턴 (리스팅에서 상품 링크만 필터링)
+BRAND_PRODUCT_URL_PATTERNS = {
+    "spao":    ["/i/item"],
+    "topten":  ["/product", "/goods", "itemNo=", "goodsNo="],
+    "hm":      ["/productpage.", "/product.", "ladies/", "men/"],
+    "zara":    ["-p"],
+    "uniqlo":  ["/ko/ko/products/", "E4"],
+}
+
 # 브랜드별 CDN 키워드 화이트리스트 — 없으면 모든 도메인 허용
 BRAND_CDN = {
     "hm": ["hmgoepprod", "hm.com"],
     "uniqlo": ["uniqlo.com"],
-    "spao": ["spao.com", "poxo.com"],          # 스파오 이미지 서버
+    "spao": ["spao.com", "poxo.com", "elandrs.com"],  # 스파오 이미지 서버
     "topten": ["goodwearmall.com"],            # 탑텐(신성통상) 전용몰 서버
     "musinsa": ["musinsa.com", "msscdn.net"],  # 무신사 서버 (musinsa_standard)
     "zara": ["zara.net", "zara.com"],          # 자라 서버
@@ -151,6 +160,87 @@ def get_existing_urls(brand: str) -> set:
             return results
 
 
+async def fetch_product_detail(context, product_url: str) -> dict:
+    """상품 상세 페이지에서 이미지 URL + 가격 + 소재 추출."""
+    result = {"image_url": None, "price": None, "material_info": None}
+    page = None
+    try:
+        page = await context.new_page()
+        await page.goto(product_url, wait_until="domcontentloaded", timeout=30000)
+        await asyncio.sleep(5)
+        data = await page.evaluate("""
+            () => {
+                // 메인 이미지: 가장 큰 img 찾기
+                let bestImg = null, bestSize = 0;
+                document.querySelectorAll('img').forEach(img => {
+                    const size = (img.naturalWidth || img.width || 0) * (img.naturalHeight || img.height || 0);
+                    if (size > bestSize) {
+                        bestSize = size;
+                        let url = img.src || img.currentSrc;
+                        if (img.srcset) {
+                            const parts = img.srcset.split(',');
+                            const last = parts[parts.length - 1].trim().split(' ')[0];
+                            if (last) url = last;
+                        }
+                        bestImg = url || null;
+                    }
+                });
+
+                // 가격: JSON-LD 우선, 없으면 텍스트에서 추출
+                let price = null;
+                try {
+                    const lds = document.querySelectorAll('script[type="application/ld+json"]');
+                    for (const ld of lds) {
+                        const data = JSON.parse(ld.textContent);
+                        const offers = data.offers || (data['@graph'] && data['@graph'].find(x => x.offers)?.offers);
+                        if (offers) {
+                            const p = parseFloat((Array.isArray(offers) ? offers[0] : offers).price);
+                            if (p >= 5000) { price = Math.round(p); break; }
+                        }
+                    }
+                } catch(e) {}
+                if (!price) {
+                    const priceMatches = [...document.body.textContent.matchAll(/₩\s*([0-9,]{4,})|([0-9,]{4,})\s*원/g)];
+                    const prices = priceMatches
+                        .map(m => parseInt((m[1]||m[2]).replace(/,/g, '')))
+                        .filter(v => v >= 5000 && v <= 2000000);
+                    if (prices.length) price = Math.max(...prices);
+                }
+
+                // 소재 (색상/사이즈 정보 제외, 실제 원단 정보만)
+                let material = null;
+                const matKeywords = ['혼용률', '소재', '재질', '원단', 'Material', 'Fabric', 'Composition'];
+                const excludeKeywords = ['색상', '사이즈', 'Color', 'Size', '컬러', '배송'];
+                const els = Array.from(document.querySelectorAll('th, td, dt, dd'));
+                for (const el of els) {
+                    const text = el.textContent.trim();
+                    if (matKeywords.some(k => text === k || text.startsWith(k + ':')) &&
+                        !excludeKeywords.some(k => text.includes(k))) {
+                        const next = el.nextElementSibling;
+                        const val = next ? next.textContent.trim() : '';
+                        // 실제 소재 정보: 퍼센트(%) 또는 소재명 포함
+                        if (val && (val.includes('%') || val.match(/면|폴리|나일론|레이온|아크릴|울|린넨|코튼|모달|텐셀|비스코스/))) {
+                            material = val;
+                            break;
+                        }
+                    }
+                }
+
+                return { image_url: bestImg, price, material_info: material };
+            }
+        """)
+        result.update(data)
+    except Exception as e:
+        print(f"[Detail] {product_url} 오류: {e}")
+    finally:
+        if page:
+            try:
+                await page.close()
+            except Exception:
+                pass
+    return result
+
+
 async def scrape_brand(brand: str, url: str) -> list[dict]:
     brand_key = get_brand_key(brand)
     now = datetime.now(timezone.utc)
@@ -158,7 +248,10 @@ async def scrape_brand(brand: str, url: str) -> list[dict]:
     existing_urls = get_existing_urls(brand)
 
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
+        import os
+        force_headless = os.environ.get("HEADLESS", "true").lower() != "false"
+        headless = True if force_headless else (brand_key not in ("hm", "zara"))
+        browser = await p.chromium.launch(headless=headless)
         context = await browser.new_context(
             user_agent=(
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -193,31 +286,37 @@ async def scrape_brand(brand: str, url: str) -> list[dict]:
             while current_page <= max_pages:
                 print(f"[{brand}] --- {current_page} 페이지 수집 시작 ---")
 
-                # 1. 지연 로딩 트리거를 위한 스크롤 (자라는 무한 스크롤만 사용)
+                # 1. 지연 로딩 트리거를 위한 스크롤 (자라/H&M은 무한 스크롤)
                 if "zara" in brand:
                     print(f"[{brand}] 무한 스크롤 시작 (바닥에 도달할 때까지)...")
                     last_height = await page.evaluate("document.body.scrollHeight")
 
                     while True:
-                        # 1. 페이지의 최하단으로 스크롤 이동
                         await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-                        # 새로운 상품 이미지가 로딩될 시간을 넉넉히 대기
                         await asyncio.sleep(2.5)
-
-                        # 2. 스크롤 후의 새로운 페이지 높이 측정
                         new_height = await page.evaluate("document.body.scrollHeight")
-
-                        # 이전 높이와 스크롤 후 높이가 같다면 더 이상 내려갈 곳이 없다는 뜻
                         if new_height == last_height:
-                            # 인터넷이 잠깐 느려서 안 불려온 걸 수도 있으니, 1.5초 더 쉬고 한 번만 더 확인해보기 (방어 코드)
                             await asyncio.sleep(1.5)
                             await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
                             new_height = await page.evaluate("document.body.scrollHeight")
-
                             if new_height == last_height:
                                 print(f"[{brand}] 최하단 바닥에 도달했습니다. 무한 스크롤 종료!")
                                 break
-
+                        last_height = new_height
+                elif "hm" in brand:
+                    print(f"[{brand}] 무한 스크롤 시작 (바닥에 도달할 때까지)...")
+                    last_height = await page.evaluate("document.body.scrollHeight")
+                    while True:
+                        await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+                        await asyncio.sleep(2)
+                        new_height = await page.evaluate("document.body.scrollHeight")
+                        if new_height == last_height:
+                            await asyncio.sleep(1.5)
+                            await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+                            new_height = await page.evaluate("document.body.scrollHeight")
+                            if new_height == last_height:
+                                print(f"[{brand}] 최하단 바닥에 도달했습니다.")
+                                break
                         last_height = new_height
                 else:
                     # 유니클로, 스파오, 탑텐 같은 일반 페이징 사이트는 기존처럼 5번만 슬쩍 내리기
@@ -225,77 +324,152 @@ async def scrape_brand(brand: str, url: str) -> list[dict]:
                         await page.evaluate("window.scrollBy(0, window.innerHeight * 1.2)")
                         await asyncio.sleep(1.5)
 
-                # 2. 이미지 추출 (이전 답변에서 개선한 자바스크립트 로직 그대로 사용)
-                raw_urls: list[str] = await page.evaluate("""
+                # 2. H&M: 리스팅 페이지에서 직접 {img, price, href} 추출
+                if brand_key == "hm":
+                    hm_cards = await page.evaluate("""
+                        () => {
+                            const results = [];
+                            document.querySelectorAll('img').forEach(img => {
+                                let src = img.src || img.currentSrc || '';
+                                if (img.srcset) {
+                                    const parts = img.srcset.split(',');
+                                    const last = parts[parts.length-1].trim().split(' ')[0];
+                                    if (last) src = last;
+                                }
+                                if (!src || src.startsWith('data:')) return;
+                                // 부모 a 태그 찾기
+                                let el = img;
+                                let href = null;
+                                while (el && el !== document.body) {
+                                    if (el.tagName === 'A' && el.href) { href = el.href; break; }
+                                    el = el.parentElement;
+                                }
+                                // 가격: 이미지 근처 텍스트에서
+                                let price = null;
+                                const container = img.closest('li, article, [class*="product"], [class*="card"]');
+                                if (container) {
+                                    const priceMatch = container.textContent.match(/₩\s*([0-9,]{4,})|([0-9,]{4,})\s*원/);
+                                    if (priceMatch) {
+                                        const v = parseInt((priceMatch[1] || priceMatch[2]).replace(/,/g,''));
+                                        if (v >= 5000) price = v;
+                                    }
+                                }
+                                results.push({ img: src, href, price });
+                            });
+                            return results;
+                        }
+                    """)
+                    print(f"[{brand}] hm_cards 원본: {len(hm_cards)}개")
+                    for card in hm_cards[:50]:
+                        img_url = card.get("img")
+                        product_url = card.get("href") or url
+                        price = card.get("price")
+                        if not img_url:
+                            continue
+                        norm = normalize_url(img_url, url)
+                        if not norm or not is_fashion_image(norm, brand_key):
+                            continue
+                        if norm in existing_urls or norm in seen_urls_global:
+                            continue
+                        seen_urls_global.add(norm)
+                        local_url = download_image(norm, brand)
+                        posts.append({
+                            "source": "lookbook",
+                            "account_name": brand,
+                            "post_url": product_url,
+                            "image_url": local_url,
+                            "caption": "",
+                            "likes": None,
+                            "posted_at": now,
+                            "price": price,
+                            "material_info": None,
+                        })
+                    print(f"[{brand}] 리스팅 수집: {len(posts)}개")
+                    break
+
+                # 2. 상품 상세 URL 수집 (리스팅 페이지에서 href만 추출)
+                all_hrefs: list[str] = await page.evaluate("""
                     () => {
-                        const imgs = Array.from(document.querySelectorAll('img'));
-                        const urls = new Set();
-                        imgs.forEach(el => {
-                            if ((el.naturalWidth > 0 && el.naturalWidth < 150) ||
-                                (el.width > 0 && el.width < 150)) {
-                                return;
+                        const hrefs = new Set();
+                        document.querySelectorAll('a[href]').forEach(a => {
+                            const h = a.href;
+                            if (h && h.startsWith('http') && !h.includes('#') &&
+                                !h.match(/\.(jpg|jpeg|png|webp|gif|svg|css|js)$/i)) {
+                                hrefs.add(h);
                             }
-                            let url = el.src || el.currentSrc;
-                            if (!url) {
-                                ['data-src', 'data-lazy-src', 'data-original'].forEach(attr => {
-                                    const v = el.getAttribute(attr);
-                                    if (v) url = v;
-                                });
-                            }
-                            if (el.srcset) {
-                                const sources = el.srcset.split(',');
-                                const lastSource = sources[sources.length - 1].trim().split(' ');
-                                if (lastSource) url = lastSource;
-                            }
-                            if (url) urls.add(url);
                         });
-                        return Array.from(urls);
+                        return Array.from(hrefs);
                     }
                 """)
+                # 브랜드별 상품 URL 패턴으로 필터링
+                patterns = BRAND_PRODUCT_URL_PATTERNS.get(brand_key, [])
+                if patterns:
+                    raw_hrefs = [h for h in all_hrefs if any(p in h for p in patterns)]
+                else:
+                    raw_hrefs = all_hrefs
 
-                print(f"[{brand}] 화면에서 긁어온 원본 URL 개수: {len(raw_urls)}개")
-                if brand == 'topten_women' and len(raw_urls) > 0:
-                    print(f"[DEBUG] 탑텐 원본 샘플: {raw_urls[:3]}")
+                # Zara: -p숫자.html 형식만 상품 URL로 인정
+                if brand_key == "zara":
+                    raw_hrefs = [h for h in raw_hrefs if re.search(r'-p\d+\.html', h)]
 
-                # 3. 데이터 정제 및 리스트에 추가
-                page_post_count = 0
-                early_stop = False
-                for src in raw_urls:
-                    # 💡 추가된 방어 코드: src가 문자열(str)이 아니면 무시하고 넘어감
-                    if not isinstance(src, str):
-                        continue
+                # 유니클로: colorDisplayCode 색상 변형 중복 제거 (상품 ID 기준 1개만)
+                if brand_key == "uniqlo":
+                    seen_products = {}
+                    for h in raw_hrefs:
+                        base = re.sub(r'[?&]colorDisplayCode=[^&]*', '', h).rstrip('?&')
+                        if base not in seen_products:
+                            seen_products[base] = h
+                    raw_hrefs = list(seen_products.values())
+                print(f"[{brand}] 수집된 상품 URL 수: {len(raw_hrefs)}개 (전체 링크: {len(all_hrefs)}개)")
 
-                    norm = normalize_url(src, url)
-                    # 이미 수집한 URL이거나 노이즈 이미지면 패스
-                    if not norm or norm in seen_urls_global or not is_fashion_image(norm, brand_key):
-                        if brand in ['topten_women', 'musinsa_standard_women'] and page_post_count == 0:
-                            print(f"[DEBUG] {brand} 필터에 막혀 버려짐: {norm}")
-                        continue
+                # 3. 이미 수집된 URL 제외 + 중복 제거
+                new_hrefs = [h for h in raw_hrefs if h not in seen_urls_global and h not in existing_urls]
+                for h in new_hrefs:
+                    seen_urls_global.add(h)
 
-                    norm_hash = hashlib.md5(norm.encode()).hexdigest()
-                    if norm in existing_urls or norm_hash in existing_urls:
-                        print(f"[{brand}] 이미 수집된 URL 발견 → 중단")
-                        early_stop = True
-                        break
+                page_post_count = len(new_hrefs)
+                print(f"[{brand}] {current_page} 페이지: 신규 {page_post_count}개 (누적: {len(seen_urls_global)}개)")
 
-                    seen_urls_global.add(norm)
-                    page_post_count += 1
-
-                    local_url = download_image(norm, brand)
-                    posts.append({
-                        "source": "lookbook",
-                        "account_name": brand,
-                        "post_url": f"{page.url}#{hash(norm) % 999999}",
-                        "image_url": local_url,
-                        "caption": "",
-                        "likes": None,
-                        "posted_at": now,
-                    })
-
-                print(f"[{brand}] {current_page} 페이지: {page_post_count}개 추가됨 (누적: {len(posts)}개)")
-
-                if early_stop:
+                # early stop: 신규가 없으면 중단
+                if page_post_count == 0 and current_page > 1:
+                    print(f"[{brand}] 신규 URL 없음 → 중단")
                     break
+
+                # 4. 상세 페이지 방문 (이미지 + 가격 + 소재)
+                sem = asyncio.Semaphore(2)
+                _debug_count = [0]
+                async def _visit(product_url):
+                    async with sem:
+                        detail = await fetch_product_detail(context, product_url)
+                        img_url = detail.get("image_url")
+                        if _debug_count[0] < 3:
+                            print(f"[DEBUG] detail: img={img_url}, price={detail.get('price')}, mat={detail.get('material_info')}")
+                            _debug_count[0] += 1
+                        if not img_url:
+                            return
+                        norm = normalize_url(img_url, product_url)
+                        if not norm or not norm.startswith("http"):
+                            return
+                        # 상세 페이지는 CDN 체크 없이 확장자만 확인
+                        if not any(ext in norm.lower() for ext in ['.jpg', '.jpeg', '.png', '.webp']):
+                            return
+                        if any(p in norm.lower() for p in NOISE_PATTERNS):
+                            return
+                        local_url = download_image(norm, brand)
+                        posts.append({
+                            "source": "lookbook",
+                            "account_name": brand,
+                            "post_url": product_url,
+                            "image_url": local_url,
+                            "caption": "",
+                            "likes": None,
+                            "posted_at": now,
+                            "price": detail.get("price"),
+                            "material_info": detail.get("material_info"),
+                        })
+
+                await asyncio.gather(*[_visit(h) for h in new_hrefs])
+                print(f"[{brand}] {current_page} 페이지 상세 수집 완료 (누적: {len(posts)}개)")
 
                 # 4. 다음 페이지로 이동
                 if current_page >= max_pages:
@@ -380,6 +554,7 @@ async def run_brand_scraper(_status_callback=None) -> int:
         if _status_callback:
             _status_callback("running", f"브랜드 스크래핑 중: {brand}")
         posts = await scrape_brand(brand, url)
+
         if posts:
             saved = save_fashion_posts(posts)
             log_crawl(source="lookbook", game="fashion", status="success", count=saved)

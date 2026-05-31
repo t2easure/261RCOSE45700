@@ -133,6 +133,13 @@ def init_db() -> None:
                 cur.execute(f"""
                     ALTER TABLE fashion_reports ADD COLUMN IF NOT EXISTS {col} {coltype}
                 """)
+            for col, coltype in [
+                ("price", "INTEGER"),
+                ("material_info", "TEXT"),
+            ]:
+                cur.execute(f"""
+                    ALTER TABLE fashion_posts ADD COLUMN IF NOT EXISTS {col} {coltype}
+                """)
         conn.commit()
 
 
@@ -148,8 +155,8 @@ def save_fashion_posts(items: list[dict]) -> int:
                 cur.execute(
                     """
                     INSERT INTO fashion_posts
-                        (source, account_name, post_url, image_url, caption, likes, comments, followers, posted_at)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        (source, account_name, post_url, image_url, caption, likes, comments, followers, posted_at, price, material_info)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT (post_url) DO NOTHING
                     """,
                     (
@@ -162,12 +169,39 @@ def save_fashion_posts(items: list[dict]) -> int:
                         item.get("comments"),
                         item.get("followers"),
                         item.get("posted_at"),
+                        item.get("price"),
+                        item.get("material_info"),
                     ),
                 )
                 if cur.rowcount > 0:
                     inserted += 1
         conn.commit()
     return inserted
+
+
+def get_brand_earliest_crawl_date(brand: str):
+    """브랜드의 최초 크롤링 날짜 반환. 없으면 None."""
+    with _get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT MIN(posted_at) FROM fashion_posts WHERE account_name = %s",
+                (brand,),
+            )
+            result = cur.fetchone()
+            return result[0] if result and result[0] else None
+
+
+def delete_brand_posts(brand: str) -> int:
+    """브랜드의 모든 패션 포스팅 삭제. 삭제된 건수 반환."""
+    with _get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "DELETE FROM fashion_posts WHERE account_name = %s",
+                (brand,),
+            )
+            deleted = cur.rowcount
+        conn.commit()
+    return deleted
 
 
 def get_uncaptioned_posts(limit: int = 100, per_account: int = 50, since: str = None, empty_only: bool = False) -> list[dict]:
@@ -245,8 +279,8 @@ def get_fashion_posts_all(limit: int = 50, offset: int = 0, source: str = None) 
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(
                 f"""
-                SELECT id, image_url, account_name, source, posted_at,
-                       caption_ai, caption_meta, collected_at
+                SELECT id, image_url, post_url, account_name, source, posted_at,
+                       caption_ai, caption_meta, collected_at, price, material_info, likes, followers
                 FROM fashion_posts
                 {where}
                 ORDER BY collected_at DESC NULLS LAST
@@ -304,7 +338,7 @@ def search_fashion_posts(
 
     where = "WHERE " + " AND ".join(conditions)
     
-    select_cols = "id, image_url, post_url, account_name, source, posted_at, caption_ai, caption_meta"
+    select_cols = "id, image_url, post_url, account_name, source, posted_at, caption_ai, caption_meta, price, material_info, likes, followers"
 
     with _get_connection() as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
