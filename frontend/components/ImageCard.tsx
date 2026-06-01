@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import React, { useState } from 'react'
 
 interface ImageCardProps {
   imageUrl: string
@@ -28,8 +28,18 @@ export default function ImageCard({ imageUrl, accountName, source, postedAt, cap
     ? new Date(postedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
     : ''
 
+  const Wrapper = postUrl
+    ? ({ children }: { children: React.ReactNode }) => (
+        <a href={postUrl} target="_blank" rel="noopener noreferrer" className="block group overflow-hidden rounded-2xl bg-white shadow-sm transition hover:shadow-md">
+          {children}
+        </a>
+      )
+    : ({ children }: { children: React.ReactNode }) => (
+        <div className="group overflow-hidden rounded-2xl bg-white shadow-sm transition hover:shadow-md">{children}</div>
+      )
+
   return (
-    <div className={`group overflow-hidden rounded-2xl bg-white shadow-sm transition hover:shadow-md ${postUrl ? 'cursor-pointer' : ''}`} onClick={() => postUrl && window.open(postUrl, '_blank')}>
+    <Wrapper>
       <div className="relative aspect-[3/4] overflow-hidden bg-cream-200">
         {imgError ? (
           <div className="flex h-full w-full flex-col items-center justify-center gap-1 text-brown-300">
@@ -79,6 +89,6 @@ export default function ImageCard({ imageUrl, accountName, source, postedAt, cap
           </div>
         )}
       </div>
-    </div>
+    </Wrapper>
   )
 }

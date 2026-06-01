@@ -103,3 +103,24 @@ def stop_crawl():
     _stop_event.set()
     _set("idle", "크롤링 중단됨")
     return {"success": True, "message": "중단 신호 전송됨"}
+
+
+@router.post("/crawl/set-cutoff")
+def set_crawl_cutoff(body: dict):
+    """인스타그램 수집 기준일 설정 (crawl_logs에 success 항목 삽입)"""
+    from datetime import datetime, timezone
+    cutoff_str = body.get("cutoff")
+    if not cutoff_str:
+        return {"success": False, "message": "cutoff 날짜가 필요합니다"}
+    try:
+        cutoff = datetime.fromisoformat(cutoff_str).replace(tzinfo=timezone.utc)
+        with _get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "INSERT INTO crawl_logs (run_at, source, status) VALUES (%s, %s, %s)",
+                    (cutoff, "instagram", "success"),
+                )
+            conn.commit()
+        return {"success": True, "message": f"기준일 설정: {cutoff_str}"}
+    except Exception as e:
+        return {"success": False, "message": str(e)}

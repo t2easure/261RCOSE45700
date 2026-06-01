@@ -1900,6 +1900,38 @@ export default function Home() {
               </button>
             </div>
           </div>
+
+          {/* 인스타 수집 기준일 */}
+          <div className="rounded-2xl bg-white p-6 shadow-sm space-y-4">
+            <div>
+              <h3 className="font-serif text-xl font-bold text-brown-700">인스타그램 수집 기준일</h3>
+              <p className="mt-1 text-xs text-brown-400">이 날짜 이후 게시된 포스트만 수집합니다</p>
+            </div>
+            <div className="flex gap-2 items-center">
+              <input
+                type="datetime-local"
+                id="cutoff-input"
+                defaultValue="2026-05-27T07:00"
+                className="rounded-lg border border-brown-200 px-3 py-2 text-xs text-brown-700 outline-none focus:border-brown-400"
+              />
+              <button
+                onClick={async () => {
+                  const val = (document.getElementById('cutoff-input') as HTMLInputElement).value
+                  if (!val) return
+                  const res = await fetch('/api/crawl/set-cutoff', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ cutoff: val }),
+                  })
+                  const data = await res.json()
+                  alert(data.message)
+                }}
+                className="rounded-lg bg-brown-600 px-4 py-2 text-xs font-medium text-cream-50 hover:bg-brown-700"
+              >
+                저장
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
