@@ -157,7 +157,10 @@ def save_fashion_posts(items: list[dict]) -> int:
                     INSERT INTO fashion_posts
                         (source, account_name, post_url, image_url, caption, likes, comments, followers, posted_at, price, material_info)
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    ON CONFLICT (post_url) DO NOTHING
+                    ON CONFLICT (post_url) DO UPDATE SET
+                        price = COALESCE(EXCLUDED.price, fashion_posts.price),
+                        material_info = COALESCE(EXCLUDED.material_info, fashion_posts.material_info),
+                        image_url = COALESCE(EXCLUDED.image_url, fashion_posts.image_url)
                     """,
                     (
                         item.get("source"),

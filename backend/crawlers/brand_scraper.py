@@ -144,20 +144,15 @@ def is_fashion_image(url: str, brand_key: str) -> bool:
 
 
 def get_existing_urls(brand: str) -> set:
+    """price가 이미 채워진 post_url만 반환 (price 없으면 재수집 대상)"""
     from db.database import _get_connection
     with _get_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT image_url FROM fashion_posts WHERE account_name = %s", (brand,))
-            results = set()
-            for (url,) in cur.fetchall():
-                results.add(url)
-                # 로컬 경로면 해시 추출, 원본 URL이면 해시 생성해서 둘 다 등록
-                if url and url.startswith('/images/'):
-                    h = url.split('/')[-1].replace('.jpg', '')
-                    results.add(h)
-                elif url and url.startswith('http'):
-                    results.add(hashlib.md5(url.encode()).hexdigest())
-            return results
+            cur.execute(
+                "SELECT post_url FROM fashion_posts WHERE account_name = %s AND price IS NOT NULL",
+                (brand,)
+            )
+            return {row[0] for row in cur.fetchall() if row[0]}
 
 
 async def fetch_product_detail(context, product_url: str) -> dict:
@@ -468,7 +463,9 @@ async def scrape_brand(brand: str, url: str) -> list[dict]:
                             "material_info": detail.get("material_info"),
                         })
 
-                await asyncio.gather(*[_visit(h) for h in new_hrefs])
+                # 무한스크롤 브랜드(zara, hm)는 페이지당 100개, 나머지는 전체
+                visit_limit = 100 if brand_key in ("zara", "hm") else len(new_hrefs)
+                await asyncio.gather(*[_visit(h) for h in new_hrefs[:visit_limit]])
                 print(f"[{brand}] {current_page} 페이지 상세 수집 완료 (누적: {len(posts)}개)")
 
                 # 4. 다음 페이지로 이동
