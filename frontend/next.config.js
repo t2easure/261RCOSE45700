@@ -5,6 +5,10 @@ const nextConfig = {
   async rewrites() {
     return [
       {
+        source: '/api/:path*',
+        destination: 'http://107.22.8.250:8001/:path*',
+      },
+      {
         source: '/images/:path*',
         destination: 'http://107.22.8.250:8001/images/:path*',
       },
