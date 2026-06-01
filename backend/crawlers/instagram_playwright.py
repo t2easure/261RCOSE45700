@@ -29,7 +29,7 @@ def get_last_crawl_time() -> datetime:
     try:
         with _get_connection() as conn:
             with conn.cursor() as cur:
-                cur.execute("SELECT run_at FROM crawl_logs WHERE status='success' ORDER BY run_at DESC LIMIT 1")
+                cur.execute("SELECT run_at FROM crawl_logs WHERE status='success' AND source='instagram' ORDER BY run_at DESC LIMIT 1")
                 row = cur.fetchone()
                 if row:
                     from dateutil.parser import parse
