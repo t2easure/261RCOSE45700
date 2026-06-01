@@ -144,11 +144,16 @@ def posts(source: str = None, limit: int = 50, offset: int = 0):
             {
                 "id": r["id"],
                 "image_url": r["image_url"],
+                "post_url": r.get("post_url"),
                 "account_name": r["account_name"],
                 "source": r["source"],
                 "posted_at": str(r["posted_at"]) if r["posted_at"] else None,
                 "caption_ai": r["caption_ai"],
                 "caption_meta": r.get("caption_meta"),
+                "price": r.get("price"),
+                "material_info": r.get("material_info"),
+                "likes": r.get("likes"),
+                "followers": r.get("followers"),
             }
             for r in rows
         ],
