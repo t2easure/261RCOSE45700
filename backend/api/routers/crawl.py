@@ -53,29 +53,23 @@ def run_crawl(background_tasks: BackgroundTasks):
             t.start()
             t.join()
             _set("running", "Instagram 수집 중...")
-            import asyncio as _aio
             from crawlers.instagram_playwright import run_instagram_playwright
-            _ig_loop = _aio.new_event_loop()
-            _aio.set_event_loop(_ig_loop)
+            _ig_loop = asyncio.new_event_loop()
             _ig_loop.run_until_complete(run_instagram_playwright())
             _ig_loop.close()
             _set("running", "캡셔닝(1차) 중...")
             from pipeline.fashion_captioner import run_captioning
-            import asyncio
             loop2 = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop2)
             loop2.run_until_complete(run_captioning(batch_size=200, per_account=50))
             loop2.close()
             _set("running", "메타 태그 추출(2차) 중...")
             from pipeline.meta_captioner import run_meta_captioning
             loop3 = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop3)
             loop3.run_until_complete(run_meta_captioning(batch_size=200))
             loop3.close()
             _set("running", "임베딩 중...")
             from pipeline.embedder import run_embedding
             loop4 = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop4)
             loop4.run_until_complete(run_embedding(batch_size=200))
             loop4.close()
             _set("idle", "크롤링 + 파이프라인 완료")
