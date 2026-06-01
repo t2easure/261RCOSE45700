@@ -251,7 +251,9 @@ export default function Home() {
       const res = await fetch(`/api/search?${params}`)
       if (res.ok) {
         const data = await res.json()
-        setSearchResults(data.results ?? [])
+        const raw = data.results ?? []
+        const maxSim = Math.max(...raw.map((r: SearchResult) => r.similarity), 1e-9)
+        setSearchResults(raw.map((r: SearchResult) => ({ ...r, similarity: r.similarity / maxSim })))
         setExpandedKeywords(data.expanded_keywords ?? [])
       }
     } catch {} finally { setSearchLoading(false) }
@@ -281,7 +283,9 @@ export default function Home() {
       if (res.ok) {
         const data = await res.json()
         setImageCaption(data.caption ?? null)
-        setSearchResults(data.results ?? [])
+        const rawImg = data.results ?? []
+        const maxSimImg = Math.max(...rawImg.map((r: SearchResult) => r.similarity), 1e-9)
+        setSearchResults(rawImg.map((r: SearchResult) => ({ ...r, similarity: r.similarity / maxSimImg })))
       }
     } catch {} finally { setImageSearchLoading(false) }
   }
