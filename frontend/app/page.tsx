@@ -1942,6 +1942,68 @@ export default function Home() {
               <p id="cutoff-msg" className="text-xs text-brown-400"></p>
             </div>
           </div>
+
+          {/* 파이프라인 개별 실행 */}
+          <div className="rounded-2xl bg-white p-6 shadow-sm space-y-5">
+            <div>
+              <h3 className="font-serif text-xl font-bold text-brown-700">파이프라인 개별 실행</h3>
+              <p className="mt-1 text-xs text-brown-400">각 단계를 개별적으로 실행합니다</p>
+            </div>
+
+            {([
+              { label: '크롤링', desc: '브랜드 + 인스타그램 수집', endpoint: '/api/crawl', method: 'POST', body: {} },
+              { label: '1차 캡셔닝', desc: 'Claude Vision 구조화 캡션', endpoint: '/api/pipeline/caption', method: 'POST', hasBatch: true, hasSince: true },
+              { label: '2차 캡셔닝', desc: '검색 키워드 추출', endpoint: '/api/pipeline/meta', method: 'POST', hasBatch: true, hasSince: true },
+              { label: '임베딩', desc: '벡터 생성', endpoint: '/api/pipeline/embed', method: 'POST', hasBatch: true, hasSince: true },
+            ] as const).map((step, i) => (
+              <div key={i} className="flex flex-wrap items-center gap-3 border-t border-brown-50 pt-4">
+                <div className="flex-1 min-w-[120px]">
+                  <p className="text-sm font-semibold text-brown-700">{step.label}</p>
+                  <p className="text-[11px] text-brown-400">{step.desc}</p>
+                </div>
+                {'hasBatch' in step && (
+                  <select id={`batch-${i}`} defaultValue="9999" className="rounded-lg border border-brown-200 px-2 py-1.5 text-xs text-brown-700 outline-none">
+                    <option value="50">50개</option>
+                    <option value="100">100개</option>
+                    <option value="200">200개</option>
+                    <option value="500">500개</option>
+                    <option value="9999">전체</option>
+                  </select>
+                )}
+                {'hasSince' in step && (
+                  <input type="date" id={`since-${i}`} className="rounded-lg border border-brown-200 px-2 py-1.5 text-xs text-brown-700 outline-none" placeholder="날짜 (선택)" />
+                )}
+                <button
+                  onClick={async () => {
+                    const msgEl = document.getElementById(`msg-${i}`)!
+                    msgEl.textContent = '실행 중...'
+                    try {
+                      const batchEl = document.getElementById(`batch-${i}`) as HTMLSelectElement | null
+                      const sinceEl = document.getElementById(`since-${i}`) as HTMLInputElement | null
+                      const batch = batchEl ? batchEl.value : '200'
+                      const since = sinceEl ? sinceEl.value : ''
+                      const url = 'hasBatch' in step ? `${step.endpoint}?batch_size=${batch}` : step.endpoint
+                      const res = await fetch(url, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(since ? { since } : {}),
+                      })
+                      const data = await res.json()
+                      msgEl.textContent = '✓ ' + (data.message ?? '시작됨')
+                      msgEl.className = 'text-xs text-green-600'
+                    } catch {
+                      msgEl.textContent = '✗ 요청 실패'
+                      msgEl.className = 'text-xs text-red-500'
+                    }
+                  }}
+                  className="rounded-lg bg-brown-600 px-4 py-2 text-xs font-medium text-cream-50 hover:bg-brown-700 shrink-0"
+                >
+                  실행
+                </button>
+                <p id={`msg-${i}`} className="w-full text-xs text-brown-400"></p>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
