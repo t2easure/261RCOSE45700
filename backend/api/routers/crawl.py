@@ -116,10 +116,17 @@ def set_crawl_cutoff(body: dict):
         cutoff = datetime.fromisoformat(cutoff_str).replace(tzinfo=timezone.utc)
         with _get_connection() as conn:
             with conn.cursor() as cur:
+                # 기존 최신 success 로그를 해당 날짜로 업데이트
                 cur.execute(
-                    "INSERT INTO crawl_logs (run_at, source, status) VALUES (%s, %s, %s)",
-                    (cutoff, "instagram", "success"),
+                    """UPDATE crawl_logs SET run_at = %s
+                       WHERE id = (SELECT id FROM crawl_logs WHERE status='success' ORDER BY run_at DESC LIMIT 1)""",
+                    (cutoff,),
                 )
+                if cur.rowcount == 0:
+                    cur.execute(
+                        "INSERT INTO crawl_logs (run_at, source, status) VALUES (%s, %s, %s)",
+                        (cutoff, "instagram", "success"),
+                    )
             conn.commit()
         return {"success": True, "message": f"기준일 설정: {cutoff_str}"}
     except Exception as e:
