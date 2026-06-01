@@ -117,7 +117,7 @@ def set_crawl_cutoff(body: dict):
         with _get_connection() as conn:
             with conn.cursor() as cur:
                 # 지정 날짜보다 최신인 success 로그를 모두 삭제하고 새 기준일 삽입
-                cur.execute("DELETE FROM crawl_logs WHERE status='success' AND run_at > %s::timestamptz", (cutoff,))
+                cur.execute("DELETE FROM crawl_logs WHERE status='success' AND run_at > CAST(%s AS timestamptz)", (cutoff.isoformat(),))
                 cur.execute(
                     "INSERT INTO crawl_logs (run_at, source, status) VALUES (%s, %s, %s)",
                     (cutoff, "crawl", "success"),
