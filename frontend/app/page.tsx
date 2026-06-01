@@ -1907,29 +1907,39 @@ export default function Home() {
               <h3 className="font-serif text-xl font-bold text-brown-700">인스타그램 수집 기준일</h3>
               <p className="mt-1 text-xs text-brown-400">이 날짜 이후 게시된 포스트만 수집합니다</p>
             </div>
-            <div className="flex gap-2 items-center">
-              <input
-                type="datetime-local"
-                id="cutoff-input"
-                defaultValue="2026-05-27T07:00"
-                className="rounded-lg border border-brown-200 px-3 py-2 text-xs text-brown-700 outline-none focus:border-brown-400"
-              />
-              <button
-                onClick={async () => {
-                  const val = (document.getElementById('cutoff-input') as HTMLInputElement).value
-                  if (!val) return
-                  const res = await fetch('/api/crawl/set-cutoff', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ cutoff: val }),
-                  })
-                  const data = await res.json()
-                  alert(data.message)
-                }}
-                className="rounded-lg bg-brown-600 px-4 py-2 text-xs font-medium text-cream-50 hover:bg-brown-700"
-              >
-                저장
-              </button>
+            <div className="space-y-2">
+              <div className="flex gap-2 items-center">
+                <input
+                  type="datetime-local"
+                  id="cutoff-input"
+                  defaultValue="2026-05-27T07:00"
+                  className="rounded-lg border border-brown-200 px-3 py-2 text-xs text-brown-700 outline-none focus:border-brown-400"
+                />
+                <button
+                  onClick={async () => {
+                    const val = (document.getElementById('cutoff-input') as HTMLInputElement).value
+                    const msg = document.getElementById('cutoff-msg')!
+                    if (!val) return
+                    try {
+                      const res = await fetch('/api/crawl/set-cutoff', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ cutoff: val }),
+                      })
+                      const data = await res.json()
+                      msg.textContent = data.success ? '✓ 저장됨' : '✗ ' + data.message
+                      msg.className = data.success ? 'text-xs text-green-600' : 'text-xs text-red-500'
+                    } catch {
+                      msg.textContent = '✗ 요청 실패'
+                      msg.className = 'text-xs text-red-500'
+                    }
+                  }}
+                  className="rounded-lg bg-brown-600 px-4 py-2 text-xs font-medium text-cream-50 hover:bg-brown-700"
+                >
+                  저장
+                </button>
+              </div>
+              <p id="cutoff-msg" className="text-xs text-brown-400"></p>
             </div>
           </div>
         </div>
