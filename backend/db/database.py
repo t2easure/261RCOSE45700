@@ -356,21 +356,22 @@ def search_fashion_posts(
             """, [query_embedding] + filter_params + [CANDIDATE_SIZE])
             vec_results = [dict(r) for r in cur.fetchall()]
             
-            # 2. 키워드 검색 (키워드 있을 때만)
+            # 2. 키워드 검색 - ts_rank (BM25 근사) 사용
             kw_results = []
             if keywords:
-                kw_cases = " + ".join(
-                    "CASE WHEN lower(caption_ai) LIKE lower(%s) THEN 1 ELSE 0 END"
-                    for _ in keywords
-                )
-                kw_params = [f"%{kw}%" for kw in keywords]
+                kw_query = " & ".join(keywords)
                 cur.execute(f"""
                     SELECT {select_cols},
-                           ({kw_cases})::float / {len(keywords)} AS kw_score
+                           ts_rank(
+                               to_tsvector('simple', coalesce(caption_ai,'') || ' ' || coalesce(caption_meta,'')),
+                               plainto_tsquery('simple', %s)
+                           ) AS kw_score
                     FROM fashion_posts {where}
+                    AND to_tsvector('simple', coalesce(caption_ai,'') || ' ' || coalesce(caption_meta,''))
+                        @@ plainto_tsquery('simple', %s)
                     ORDER BY kw_score DESC
                     LIMIT %s
-                """, kw_params + filter_params + [CANDIDATE_SIZE])
+                """, [kw_query] + filter_params + [kw_query, CANDIDATE_SIZE])
                 kw_results = [dict(r) for r in cur.fetchall()]
 
     # 3. RRF 계산
