@@ -135,13 +135,19 @@ async def process_post(ant_client, http_client, post, semaphore, retries=3):
                 return True
                 
             except Exception as e:
+                err = str(e)
+                # 이미지 크기 초과 → 삭제
+                if "8000 pixels" in err or "image dimensions exceed" in err:
+                    delete_post(post["id"])
+                    tqdm.write(f"🗑️ ID #{post['id']} 이미지 크기 초과 → 삭제")
+                    return False
                 # 529 Overloaded 에러 나면 대기 후 자동 재시도
-                if "Overloaded" in str(e) and attempt < retries - 1:
+                if "Overloaded" in err and attempt < retries - 1:
                     wait_time = (attempt + 1) * 5
                     tqdm.write(f"⚠️ ID #{post['id']} 서버 과부하, {wait_time}초 후 재시도...")
                     await asyncio.sleep(wait_time)
                     continue
-                
+
                 tqdm.write(f"❌ ID #{post['id']} 실패: {e}")
                 return False
 
