@@ -367,7 +367,7 @@ async def scrape_brand(brand: str, url: str) -> list[dict]:
                         if norm in existing_urls or norm in seen_urls_global:
                             continue
                         seen_urls_global.add(norm)
-                        local_url = download_image(norm, brand)
+                        local_url = await asyncio.get_event_loop().run_in_executor(None, download_image, norm, brand)
                         posts.append({
                             "source": "lookbook",
                             "account_name": brand,
@@ -446,7 +446,7 @@ async def scrape_brand(brand: str, url: str) -> list[dict]:
                             return
                         if any(p in norm.lower() for p in NOISE_PATTERNS):
                             return
-                        local_url = download_image(norm, brand)
+                        local_url = await asyncio.get_event_loop().run_in_executor(None, download_image, norm, brand)
                         posts.append({
                             "source": "lookbook",
                             "account_name": brand,
