@@ -59,11 +59,6 @@ export default function ImageCard({ imageUrl, accountName, source, postedAt, cap
           {SOURCE_LABELS[source] ?? source}
         </span>
         {/* 유사도 */}
-        {similarity !== undefined && (
-          <span className="absolute right-2 top-2 rounded-full bg-brown-700/70 px-2 py-0.5 text-[10px] font-medium text-white backdrop-blur-sm">
-            {Math.round(similarity * 100)}%
-          </span>
-        )}
       </div>
 
       <div className="p-3 space-y-1">
