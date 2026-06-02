@@ -20,12 +20,11 @@ BASE_DIR = Path(__file__).parent.parent / "data"
 
 CAPTION_PROMPT = """이 이미지를 분석해줘.
 다음 중 하나라도 해당하면 SKIP 이라고만 답해:
-- 실제 사람이 착용한 여성 패션이 아님 (브랜드 로고, 텍스트 배너, 광고 그래픽, 제품 단독컷)
-- 착용자가 없는 옷/제품 사진
+- 브랜드 로고, 텍스트 배너, 광고 그래픽 (옷이 없는 이미지)
 - 남성복, 아동복
 - 음식, 풍경, 인테리어 등 패션 무관 이미지
 
-실제 사람이 착용한 여성 패션 이미지라면 아래 형식으로 작성해줘.
+여성 패션 의류 이미지라면 (모델 착용샷 또는 제품 단독컷 모두 포함) 아래 형식으로 작성해줘.
 마크다운 기호(#, **, * 등)나 특수문자 없이 일반 텍스트로만 작성해줘.
 
 [스타일] 전체적인 스타일 분위기 (예: 미니멀 캐주얼, 페미닌 로맨틱, 스트리트 캐주얼)
@@ -96,12 +95,23 @@ async def process_post(ant_client, http_client, post, semaphore, retries=3):
         if not base64_data: 
             return False
 
-        # 1. 파일 진짜 포맷 확인해서 media_type 강제 교정 (png 에러 방지)
+        # 1. 파일 진짜 포맷 확인 + 8000px 초과 시 리사이즈
         try:
+            from PIL import Image
+            import io
             raw_data = base64.b64decode(base64_data)
             fmt = imghdr.what(None, h=raw_data)
             if fmt:
                 media_type = f"image/{fmt}"
+            img = Image.open(io.BytesIO(raw_data))
+            w, h = img.size
+            if max(w, h) > 7000:
+                scale = 7000 / max(w, h)
+                img = img.resize((int(w * scale), int(h * scale)), Image.LANCZOS)
+                buf = io.BytesIO()
+                img.save(buf, format="JPEG")
+                base64_data = base64.b64encode(buf.getvalue()).decode()
+                media_type = "image/jpeg"
         except:
             pass
 
@@ -136,11 +146,6 @@ async def process_post(ant_client, http_client, post, semaphore, retries=3):
                 
             except Exception as e:
                 err = str(e)
-                # 이미지 크기 초과 → 삭제
-                if "8000 pixels" in err or "image dimensions exceed" in err:
-                    delete_post(post["id"])
-                    tqdm.write(f"🗑️ ID #{post['id']} 이미지 크기 초과 → 삭제")
-                    return False
                 # 529 Overloaded 에러 나면 대기 후 자동 재시도
                 if "Overloaded" in err and attempt < retries - 1:
                     wait_time = (attempt + 1) * 5
