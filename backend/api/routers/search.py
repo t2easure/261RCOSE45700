@@ -9,9 +9,19 @@ router = APIRouter(prefix="/search", tags=["search"])
 
 
 def get_query_embedding(text: str) -> list[float]:
-    """CLIP 텍스트 인코더로 쿼리 임베딩"""
+    """한국어 → 영어 번역 후 CLIP 텍스트 임베딩"""
     from pipeline.embedder import embed_text
-    return embed_text(text)
+    try:
+        client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
+        res = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=100,
+            messages=[{"role": "user", "content": f"Translate this Korean fashion query to English (concise, keywords only): {text}"}]
+        )
+        english = res.content[0].text.strip()
+    except Exception:
+        english = text
+    return embed_text(english)
 
 
 def expand_query(q: str) -> tuple[str, list[str]]:
