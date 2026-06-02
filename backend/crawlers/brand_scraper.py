@@ -162,7 +162,7 @@ async def fetch_product_detail(context, product_url: str) -> dict:
     try:
         page = await context.new_page()
         await page.goto(product_url, wait_until="domcontentloaded", timeout=10000)
-        await asyncio.sleep(5)
+        await asyncio.sleep(2)
         data = await page.evaluate("""
             () => {
                 // 메인 이미지: 가장 큰 img 찾기
@@ -246,7 +246,8 @@ async def scrape_brand(brand: str, url: str) -> list[dict]:
         import os
         force_headless = os.environ.get("HEADLESS", "true").lower() != "false"
         headless = True if force_headless else (brand_key not in ("hm", "zara"))
-        browser = await p.chromium.launch(headless=headless)
+        launch_env = {k: v for k, v in os.environ.items() if k != "DISPLAY"} if headless else None
+        browser = await p.chromium.launch(headless=headless, env=launch_env)
         context = await browser.new_context(
             user_agent=(
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -431,7 +432,7 @@ async def scrape_brand(brand: str, url: str) -> list[dict]:
                     break
 
                 # 4. 상세 페이지 방문 (이미지 + 가격 + 소재)
-                sem = asyncio.Semaphore(2)
+                sem = asyncio.Semaphore(5)
                 async def _visit(product_url):
                     async with sem:
                         detail = await fetch_product_detail(context, product_url)

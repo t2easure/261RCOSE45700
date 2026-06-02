@@ -42,6 +42,20 @@ def get_last_crawl_time() -> datetime:
         pass
     return datetime.now(timezone.utc) - timedelta(days=7)
 
+def get_existing_instagram_urls() -> set:
+    """DB에 이미 저장된 Instagram post_url 목록 조회"""
+    try:
+        with _get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT post_url
+                    FROM fashion_posts
+                    WHERE source = 'instagram'
+                """)
+                return {row[0] for row in cur.fetchall() if row[0]}
+    except Exception as e:
+        print(f"[Instagram] 기존 URL 조회 실패: {e}")
+        return set()
 
 async def save_session(context):
     SESSION_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -113,6 +127,8 @@ async def login(page, username: str, password: str) -> bool:
 
 async def collect_account(page, username: str, cutoff: datetime, followers: int = 0) -> list[dict]:
     posts = []
+    existing_urls = get_existing_instagram_urls()
+
     try:
         await page.goto(f"https://www.instagram.com/{username}/", wait_until="domcontentloaded", timeout=30000)
         await asyncio.sleep(3)
@@ -142,6 +158,11 @@ async def collect_account(page, username: str, cutoff: datetime, followers: int 
                     continue
                 seen.add(href)
                 shortcode = href.strip('/').split('/')[-1]
+                post_url = f"https://www.instagram.com/p/{shortcode}/"
+
+                if post_url in existing_urls:
+                    print(f"[Instagram] {shortcode} 이미 저장됨 → 스킵")
+                    continue
 
                 # 게시물 페이지 접속해서 이미지 URL 및 날짜 가져오기
                 try:
@@ -165,40 +186,133 @@ async def collect_account(page, username: str, cutoff: datetime, followers: int 
                         scroll_count = max_scrolls  # 조기 종료
                         break
 
-                    # 이미지 URL
-                    img_url = None
+                    # 캐러셀 이미지 전체 수집
+                    carousel_imgs = []
                     try:
-                        img = post_page.locator('article img').first
-                        img_url = await img.get_attribute('src', timeout=3000)
+                        seen_imgs = set()
+                        for slide_idx in range(10):  # 최대 10장
+                            img_src = await post_page.evaluate("""
+                                () => {
+                                    const imgs = Array.from(document.querySelectorAll('article img'));
+                                    let best = null, bestSize = 0;
+                                    for (const img of imgs) {
+                                        const w = img.naturalWidth || img.width || 0;
+                                        const h = img.naturalHeight || img.height || 0;
+                                        if (w > 100 && h > 100 && w * h > bestSize) {
+                                            bestSize = w * h; best = img.src || img.currentSrc;
+                                        }
+                                    }
+                                    return best;
+                                }
+                            """)
+                            if img_src and img_src not in seen_imgs:
+                                seen_imgs.add(img_src)
+                                carousel_imgs.append(img_src)
+
+                            # 다음 슬라이드 버튼 클릭
+                            next_btn = post_page.locator('button[aria-label="다음"], button[aria-label="Next"]').first
+                            if await next_btn.is_visible(timeout=1000):
+                                await next_btn.click()
+                                await asyncio.sleep(0.8)
+                            else:
+                                break
                     except Exception:
                         pass
 
+                    img_url = carousel_imgs[0] if carousel_imgs else None
+
                     # 좋아요
-                    likes = 0
+                    likes = None
                     try:
-                        like_text = await post_page.locator('section span:has-text("좋아요"), span[class*="like"]').first.inner_text(timeout=2000)
-                        nums = re.findall(r'[\d,]+', like_text.replace(',', ''))
-                        if nums:
-                            likes = int(nums[0])
-                    except Exception:
-                        pass
+                        article_text = await post_page.locator("article").inner_text(timeout=5000)
+
+                        like_patterns = [
+                            r"좋아요\s*([\d,]+)\s*개",
+                            r"([\d,]+)\s*명이\s*좋아합니다",
+                            r"([\d,]+)\s*likes",
+                            r"Liked by .* and ([\d,]+) others",
+                            r"and\s*([\d,]+)\s*others",
+                            r"외\s*([\d,]+)\s*명",
+                        ]
+
+                        for pat in like_patterns:
+                            m = re.search(pat, article_text)
+                            if m:
+                                likes = int(m.group(1).replace(",", ""))
+                                break
+
+                        if likes is None:
+                            lines = [line.strip() for line in article_text.splitlines() if line.strip()]
+
+                            def parse_count(text: str):
+                                text = text.replace(",", "").strip()
+                                m = re.match(r"^(\d+(?:\.\d+)?)([KkMm]?)$", text)
+                                if not m:
+                                    return None
+
+                                value = float(m.group(1))
+                                suffix = m.group(2).lower()
+
+                                if suffix == "k":
+                                    value *= 1000
+                                elif suffix == "m":
+                                    value *= 1000000
+
+                                return int(value)
+
+                            # 모바일 Instagram 게시물 텍스트에서:
+                            # username / • / Follow / (협업계정 optional) / likes / comments / username / caption ...
+                            for i, line in enumerate(lines):
+                                if line == "Follow":
+                                    numeric_candidates = []
+
+                                    # Follow 이후 몇 줄 안에서 숫자 후보 수집
+                                    for next_line in lines[i + 1:i + 8]:
+                                        parsed = parse_count(next_line)
+                                        if parsed is not None:
+                                            numeric_candidates.append(parsed)
+
+                                    # 보통 첫 번째 숫자 = 좋아요, 두 번째 숫자 = 댓글 수
+                                    # 단, 숫자가 하나뿐이고 바로 "Liked by ... and others" 형태면 좋아요 숨김일 가능성이 큼
+                                    if len(numeric_candidates) >= 2:
+                                        likes = numeric_candidates[0]
+                                    elif len(numeric_candidates) == 1:
+                                        # 좋아요 수가 명확히 하나만 보이는 케이스를 허용하되,
+                                        # "Liked by ... and others"만 있는 숨김 케이스는 제외
+                                        joined_after_follow = "\n".join(lines[i + 1:i + 8])
+                                        if "Liked by" not in joined_after_follow:
+                                            likes = numeric_candidates[0]
+
+                                    break
+
+                        if likes is None:
+                            print(f"[Instagram DEBUG] {shortcode} 좋아요 파싱 실패 또는 숨김")
+                            print(article_text[:800])
+
+                    except Exception as e:
+                        print(f"[Instagram DEBUG] {shortcode} 좋아요 영역 읽기 실패: {e}")
+
+                    if likes is None:
+                        likes = -1
 
                     await post_page.close()
 
-                    if img_url:
-                        posts.append({
-                            "source": "instagram",
-                            "account_name": username,
-                            "post_url": f"https://www.instagram.com/p/{shortcode}/",
-                            "image_url": img_url,
-                            "caption": "",
-                            "likes": likes,
-                            "comments": 0,
-                            "followers": followers,
-                            "posted_at": posted_at,
-                        })
+                    if carousel_imgs:
+                        for idx, ci in enumerate(carousel_imgs):
+                            slide_url = post_url if idx == 0 else f"{post_url}?img={idx+1}"
+                            posts.append({
+                                "source": "instagram",
+                                "account_name": username,
+                                "post_url": slide_url,
+                                "image_url": ci,
+                                "caption": "",
+                                "likes": likes,
+                                "comments": 0,
+                                "followers": followers,
+                                "posted_at": posted_at,
+                            })
                         new_found = True
-                        print(f"[Instagram] @{username} 수집: {shortcode} ({posted_at.date()}) 좋아요 {likes}")
+                        print(f"[Instagram] @{username} 수집: {shortcode} ({posted_at.date()}) 이미지 {len(carousel_imgs)}장")
 
                 except Exception as e:
                     print(f"[Instagram] {shortcode} 수집 실패: {e}")

@@ -23,7 +23,7 @@ class CaptionRequest(BaseModel):
     since: Optional[str] = None
 
 @router.post("/caption")
-def run_caption(background_tasks: BackgroundTasks, body: CaptionRequest = CaptionRequest()):
+def run_caption(background_tasks: BackgroundTasks, body: CaptionRequest = CaptionRequest(), batch_size: int = 9999):
     if _status["state"] == "running":
         return {"message": "파이프라인이 이미 실행 중입니다."}
 
@@ -32,13 +32,13 @@ def run_caption(background_tasks: BackgroundTasks, body: CaptionRequest = Captio
     def _run():
         from pipeline.fashion_captioner import run_captioning
         try:
-            asyncio.run(run_captioning(per_account=50, since=body.since))
-            _set("idle", "1차 캡셔닝 완료 (계정당 50개)")
+            asyncio.run(run_captioning(batch_size=batch_size, per_account=batch_size, since=body.since))
+            _set("idle", f"1차 캡셔닝 완료 ({batch_size}개)")
         except Exception as e:
             _set("error", str(e))
 
     background_tasks.add_task(_run)
-    return {"message": "1차 캡셔닝 시작"}
+    return {"message": f"1차 캡셔닝 시작 ({batch_size}개)"}
 
 
 @router.post("/meta")
