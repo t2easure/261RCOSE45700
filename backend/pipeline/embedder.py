@@ -43,7 +43,9 @@ def embed_image(image_url: str) -> list[float] | None:
         inputs = processor(images=img, return_tensors="pt")
         with torch.no_grad():
             emb = model.get_image_features(**inputs)
-            emb = emb / emb.norm(dim=-1, keepdim=True)
+            if not isinstance(emb, torch.Tensor):
+                emb = emb.image_embeds if hasattr(emb, 'image_embeds') else emb.pooler_output
+            emb = torch.nn.functional.normalize(emb, dim=-1)
         return emb[0].tolist()
     except Exception as e:
         print(f"[Embedder] 이미지 임베딩 실패 {image_url}: {e}")
@@ -58,7 +60,9 @@ def embed_text(text: str) -> list[float] | None:
         inputs = processor(text=[text[:77]], return_tensors="pt", truncation=True)
         with torch.no_grad():
             emb = model.get_text_features(**inputs)
-            emb = emb / emb.norm(dim=-1, keepdim=True)
+            if not isinstance(emb, torch.Tensor):
+                emb = emb.text_embeds if hasattr(emb, 'text_embeds') else emb.pooler_output
+            emb = torch.nn.functional.normalize(emb, dim=-1)
         return emb[0].tolist()
     except Exception as e:
         print(f"[Embedder] 텍스트 임베딩 실패: {e}")
