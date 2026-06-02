@@ -20,7 +20,7 @@ def download_image(url: str, brand: str) -> str:
         save_path = save_dir / f"{h}.jpg"
         if save_path.exists():
             return f"/images/{brand}/{h}.jpg"
-        with httpx.Client(timeout=10, follow_redirects=True) as client:
+        with httpx.Client(timeout=5, follow_redirects=True) as client:
             r = client.get(url, headers={"User-Agent": "Mozilla/5.0"})
             if r.status_code == 200 and len(r.content) > 1000:
                 save_path.write_bytes(r.content)
