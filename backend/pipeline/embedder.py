@@ -110,6 +110,14 @@ def run_embedding(batch_size: int = 10000, since: str = None) -> int:
             print(f"[Embedder] #{post['id']} 실패: {e}")
 
     print(f"[Embedder] 완료: {success}/{len(posts)}개")
+
+    # 메모리 해제
+    global _model, _processor
+    _model = None
+    _processor = None
+    import gc
+    gc.collect()
+
     return success
 
 
