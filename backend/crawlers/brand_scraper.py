@@ -320,8 +320,8 @@ async def scrape_brand(brand: str, url: str) -> list[dict]:
                         await page.evaluate("window.scrollBy(0, window.innerHeight * 1.2)")
                         await asyncio.sleep(1.5)
 
-                # 2. H&M: 리스팅 페이지에서 직접 {img, price, href} 추출
-                if brand_key == "hm":
+                # 2. H&M / Topten: 리스팅 페이지에서 직접 {img, price, href} 추출
+                if brand_key in ("hm", "topten"):
                     hm_cards = await page.evaluate("""
                         () => {
                             const results = [];
@@ -355,7 +355,7 @@ async def scrape_brand(brand: str, url: str) -> list[dict]:
                             return results;
                         }
                     """)
-                    print(f"[{brand}] hm_cards 원본: {len(hm_cards)}개")
+                    print(f"[{brand}] listing_cards 원본: {len(hm_cards)}개")
                     for card in hm_cards[:50]:
                         img_url = card.get("img")
                         product_url = card.get("href") or url
