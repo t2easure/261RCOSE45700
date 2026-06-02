@@ -2,20 +2,16 @@ import os
 import base64
 import anthropic
 from fastapi import APIRouter, Query, UploadFile, File
-from sentence_transformers import SentenceTransformer
 
 from db.database import search_fashion_posts, get_fashion_accounts
 
 router = APIRouter(prefix="/search", tags=["search"])
 
-_model = None
 
-
-def get_model() -> SentenceTransformer:
-    global _model
-    if _model is None:
-        _model = SentenceTransformer("paraphrase-multilingual-MiniLM-L12-v2")
-    return _model
+def get_query_embedding(text: str) -> list[float]:
+    """CLIP 텍스트 인코더로 쿼리 임베딩"""
+    from pipeline.embedder import embed_text
+    return embed_text(text)
 
 
 def expand_query(q: str) -> tuple[str, list[str]]:
@@ -39,6 +35,7 @@ async def search_by_image(file: UploadFile = File(...)):
     media_type = file.content_type or "image/jpeg"
     b64 = base64.b64encode(content).decode("utf-8")
 
+    # Claude로 캡션 생성 (화면 표시용)
     client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
     res = client.messages.create(
         model="claude-haiku-4-5-20251001",
@@ -49,7 +46,23 @@ async def search_by_image(file: UploadFile = File(...)):
         ]}]
     )
     caption = res.content[0].text.strip()
-    query_embedding = get_model().encode(caption).tolist()
+
+    # CLIP 이미지 임베딩으로 검색
+    try:
+        from PIL import Image
+        import io
+        import torch
+        from pipeline.embedder import get_model
+        model, processor = get_model()
+        img = Image.open(io.BytesIO(content)).convert("RGB")
+        inputs = processor(images=img, return_tensors="pt")
+        with torch.no_grad():
+            emb = model.get_image_features(**inputs)
+            emb = emb / emb.norm(dim=-1, keepdim=True)
+        query_embedding = emb[0].tolist()
+    except Exception:
+        query_embedding = get_query_embedding(caption)
+
     results = search_fashion_posts(query_embedding, days=0, limit=50)
 
     return {
@@ -84,7 +97,7 @@ def search(
     accounts: str = Query(None, description="계정 필터 (쉼표 구분)"),
 ):
     expanded_text, keywords = expand_query(q)
-    query_embedding = get_model().encode(expanded_text).tolist()
+    query_embedding = get_query_embedding(expanded_text)
 
     sources_list = [s.strip() for s in sources.split(",")] if sources else None
     accounts_list = [a.strip() for a in accounts.split(",")] if accounts else None
