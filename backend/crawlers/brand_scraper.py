@@ -161,7 +161,7 @@ async def fetch_product_detail(context, product_url: str) -> dict:
     page = None
     try:
         page = await context.new_page()
-        await page.goto(product_url, wait_until="domcontentloaded", timeout=30000)
+        await page.goto(product_url, wait_until="domcontentloaded", timeout=10000)
         await asyncio.sleep(5)
         data = await page.evaluate("""
             () => {
@@ -432,14 +432,10 @@ async def scrape_brand(brand: str, url: str) -> list[dict]:
 
                 # 4. 상세 페이지 방문 (이미지 + 가격 + 소재)
                 sem = asyncio.Semaphore(2)
-                _debug_count = [0]
                 async def _visit(product_url):
                     async with sem:
                         detail = await fetch_product_detail(context, product_url)
                         img_url = detail.get("image_url")
-                        if _debug_count[0] < 3:
-                            print(f"[DEBUG] detail: img={img_url}, price={detail.get('price')}, mat={detail.get('material_info')}")
-                            _debug_count[0] += 1
                         if not img_url:
                             return
                         norm = normalize_url(img_url, product_url)
