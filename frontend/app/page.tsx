@@ -67,6 +67,7 @@ interface TrendCluster {
   brand_ratio?: number
   signal_strength?: number
   signal_label?: 'opportunity' | 'growing' | 'saturated' | 'weak'
+  avg_price?: number | null
   top_influencers?: TopInfluencer[]
   material_dist?: MaterialDist[]
   keywords_v2?: CategorizedKeywords
@@ -920,11 +921,15 @@ export default function Home() {
                               : 'weak'
                             const sig = sigLabel ? SIGNAL_META[sigLabel] : null
                             const hasBrandRatio = c.brand_ratio != null
+                            const priceScore = c.avg_price != null
+                              ? Math.max(0, Math.min(100, (100000 - c.avg_price) / 80000 * 100))
+                              : 0
                             const radarData = [
                               { axis: '게시물 수', value: Math.min((c.post_count / 50) * 100, 100) },
                               { axis: '인플 참여율', value: Math.min((c.avg_engagement_rate / 0.02) * 100, 100) },
                               { axis: '브랜드 미진입', value: Math.min((1 - brandRatio) * 100, 100) },
                               { axis: '선행 일수', value: c.signal_strength != null ? Math.max(0, Math.min(((c.signal_strength - Math.min(c.post_count/50*3,3) - Math.min(c.avg_engagement_rate/0.02*3,3) - (hasBrandRatio ? (1-brandRatio)*2 : 0)) / 2) * 100, 100)) : 0 },
+                              { axis: '가격 매력도', value: priceScore },
                             ]
                             return (
                               <div key={i} className="rounded-2xl bg-white p-4 shadow-sm space-y-3">

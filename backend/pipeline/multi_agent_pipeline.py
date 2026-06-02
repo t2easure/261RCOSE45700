@@ -213,6 +213,10 @@ def _trend_agent(posts: list[dict], client: anthropic.Anthropic) -> dict:
         total_mat = sum(mat_count.values()) or 1
         material_dist = [{"material": m, "pct": round(c / total_mat * 100)} for m, c in sorted(mat_count.items(), key=lambda x: -x[1])]
 
+        # 브랜드 포스트 평균 가격
+        brand_prices = [p["price"] for p in brand_posts if p.get("price") and p["price"] > 0]
+        avg_price = round(np.mean(brand_prices)) if brand_prices else None
+
         clusters.append({
             "trend_name": trend_name,
             "short_name": short_name,
@@ -221,6 +225,7 @@ def _trend_agent(posts: list[dict], client: anthropic.Anthropic) -> dict:
             "is_leading": is_leading,
             "avg_engagement_rate": round(float(avg_engagement), 4),
             "brand_ratio": brand_ratio,
+            "avg_price": avg_price,
             "representative_ids": [p["id"] for p in representative],
             "representative_images": [p["image_url"] for p in representative],
             "top_influencers": top_influencers,
