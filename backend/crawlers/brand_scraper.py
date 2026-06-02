@@ -246,8 +246,7 @@ async def scrape_brand(brand: str, url: str) -> list[dict]:
         import os
         force_headless = os.environ.get("HEADLESS", "true").lower() != "false"
         headless = True if force_headless else (brand_key not in ("hm", "zara"))
-        launch_env = {k: v for k, v in os.environ.items() if k != "DISPLAY"} if headless else None
-        browser = await p.chromium.launch(headless=headless, env=launch_env)
+        browser = await p.chromium.launch(headless=True)
         context = await browser.new_context(
             user_agent=(
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
