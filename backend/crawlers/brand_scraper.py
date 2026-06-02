@@ -161,8 +161,9 @@ async def fetch_product_detail(context, product_url: str) -> dict:
     page = None
     try:
         page = await context.new_page()
+        page.set_default_timeout(8000)
         await page.goto(product_url, wait_until="domcontentloaded", timeout=10000)
-        await asyncio.sleep(2)
+        await asyncio.sleep(1)
         data = await page.evaluate("""
             () => {
                 // 메인 이미지: 가장 큰 img 찾기
