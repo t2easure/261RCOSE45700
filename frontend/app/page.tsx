@@ -923,7 +923,7 @@ export default function Home() {
                             const hasBrandRatio = c.brand_ratio != null
                             const priceScore = c.avg_price != null
                               ? Math.max(0, Math.min(100, (100000 - c.avg_price) / 80000 * 100))
-                              : 0
+                              : Math.min(100, (1 - brandRatio) * 100)
                             const radarData = [
                               { axis: '게시물 수', value: Math.min((c.post_count / 50) * 100, 100) },
                               { axis: '인플 참여율', value: Math.min((c.avg_engagement_rate / 0.02) * 100, 100) },

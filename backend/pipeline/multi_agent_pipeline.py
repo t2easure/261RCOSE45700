@@ -166,7 +166,7 @@ def _trend_agent(posts: list[dict], client: anthropic.Anthropic) -> dict:
         cluster_description = re.sub(r'[\*\#\_\-]+', '', desc_res.content[0].text.strip()).strip()
 
         influencer_posts = [p for p in cluster_posts if p["account_name"] not in brands and (p.get("followers") or 0) >= 100]
-        brand_posts = [p for p in cluster_posts if p["account_name"] in brands]
+        brand_posts = [p for p in cluster_posts if p["account_name"] in brands or p.get("source") == "lookbook"]
         brand_ratio = round(len(brand_posts) / max(len(cluster_posts), 1), 4)
         if influencer_posts:
             avg_engagement = np.mean([
@@ -292,7 +292,7 @@ def _lead_index_agent(posts: list[dict], trend_clusters: list[dict]) -> list[dic
         cluster_posts = [posts[j] for j in idxs]
 
         influencer_posts = [p for p in cluster_posts if p["account_name"] not in brands and p.get("posted_at")]
-        brand_posts = [p for p in cluster_posts if p["account_name"] in brands and p.get("posted_at")]
+        brand_posts = [p for p in cluster_posts if (p["account_name"] in brands or p.get("source") == "lookbook") and p.get("posted_at")]
 
         if not influencer_posts:
             continue
