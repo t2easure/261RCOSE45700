@@ -169,6 +169,12 @@ async def collect_account(page, username: str, cutoff: datetime, followers: int 
         max_scrolls = 10
 
         print(f" -> [추적 3-4] {username} 피드 스크롤 및 수집 시작...", flush=True)
+        try:
+            await page.wait_for_selector('a[href*="/p/"]', timeout=10000)
+        except Exception:
+            print(f"[Instagram] @{username} 포스트 그리드 로드 실패 → 스킵", flush=True)
+            return posts
+
         while scroll_count < max_scrolls:
             anchors = await page.locator('a[href*="/p/"]').all()
             new_found = False
