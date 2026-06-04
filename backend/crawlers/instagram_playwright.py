@@ -374,7 +374,7 @@ async def run_instagram_playwright(ig_username: str = None, ig_password: str = N
                 # 계정당 무한 대기를 방지하기 위해 2분(120초) 타임아웃 설정
                 posts = await asyncio.wait_for(
                     collect_account(user_page, username, cutoff=cutoff),
-                    timeout=120,
+                    timeout=300,
                 )
             except asyncio.TimeoutError:
                 print(f"[Instagram] @{username} 타임아웃 (2분 초과) → 스킵 및 강제 캡처", flush=True)
