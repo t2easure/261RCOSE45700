@@ -127,7 +127,7 @@ async def login(page, username: str, password: str) -> bool:
 
 async def collect_account(page, username: str, cutoff: datetime, followers: int = 0) -> list[dict]:
     posts = []
-    existing_urls = get_existing_instagram_urls()
+    existing_urls = await asyncio.get_event_loop().run_in_executor(None, get_existing_instagram_urls)
 
     try:
         await page.goto(f"https://www.instagram.com/{username}/", wait_until="domcontentloaded", timeout=30000)
@@ -355,7 +355,15 @@ async def run_instagram_playwright(ig_username: str = None, ig_password: str = N
     total = 0
 
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
+        browser = await p.chromium.launch(
+            headless=True,
+            args=[
+                "--no-sandbox",
+                "--disable-setuid-sandbox",
+                "--disable-dev-shm-usage",
+                "--disable-gpu",
+            ],
+        )
         context = await browser.new_context(
             user_agent=(
                 "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) "
@@ -369,6 +377,19 @@ async def run_instagram_playwright(ig_username: str = None, ig_password: str = N
 
         # 세션 로드 or 로그인
         session_loaded = await load_session(context)
+        if session_loaded:
+            # EC2 IP에서 기존 세션이 무효화됐을 수 있으므로 확인
+            try:
+                await page.goto("https://www.instagram.com/", wait_until="domcontentloaded", timeout=20000)
+                await asyncio.sleep(2)
+                if "login" in page.url or "accounts" in page.url:
+                    print("[Instagram] 세션 만료 또는 IP 차단 감지 → 재로그인 시도")
+                    session_loaded = False
+                else:
+                    print(f"[Instagram] 세션 유효 확인: {page.url}")
+            except Exception as e:
+                print(f"[Instagram] 세션 확인 실패: {e}")
+                session_loaded = False
         if not session_loaded:
             if not ig_username or not ig_password:
                 print("[Instagram] 세션 없음, 환경변수 INSTAGRAM_USERNAME/INSTAGRAM_PASSWORD 필요")
@@ -382,7 +403,14 @@ async def run_instagram_playwright(ig_username: str = None, ig_password: str = N
 
         for username in brands + influencers:
             print(f"[Instagram] 수집 시작: @{username}")
-            posts = await collect_account(page, username, cutoff=cutoff)
+            try:
+                posts = await asyncio.wait_for(
+                    collect_account(page, username, cutoff=cutoff),
+                    timeout=120,  # 계정당 최대 2분
+                )
+            except asyncio.TimeoutError:
+                print(f"[Instagram] @{username} 타임아웃 (5분 초과) → 스킵")
+                posts = []
             if posts:
                 download_images(posts)
                 saved = save_fashion_posts(posts)
