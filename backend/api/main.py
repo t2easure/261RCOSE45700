@@ -144,7 +144,9 @@ def _image_ok(account_name: str, image_url: str) -> bool:
     if ext.lower() not in ("jpg", "jpeg", "png", "webp"):
         ext = "jpg"
     fpath = IMAGES_DIR / account_name / f"{md5}.{ext}"
-    return fpath.exists() and fpath.stat().st_size > 10000
+    if fpath.exists() and fpath.stat().st_size < 10000:
+        return False
+    return True
 
 
 @app.get("/posts")
@@ -166,6 +168,6 @@ def posts(source: str = None, limit: int = 50, offset: int = 0):
             "followers": r.get("followers"),
         }
         for r in rows
-        if r.get("source") != "instagram" or _image_ok(r["account_name"], r["image_url"])
+        if r.get("source") != "instagram" or _image_ok(r["account_name"], r["image_url"]) is not False
     ]
     return {"total": len(items), "items": items}
