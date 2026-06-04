@@ -79,7 +79,8 @@ async def load_session(context) -> bool:
 
 async def login(page, username: str, password: str) -> bool:
     try:
-        await page.goto("https://www.instagram.com/accounts/login/", wait_until="networkidle", timeout=30000)
+        await page.goto("https://www.instagram.com/accounts/login/", wait_until="commit", timeout=30000)
+        await asyncio.sleep(3)
         await asyncio.sleep(2)
 
         # 쿠키 동의
