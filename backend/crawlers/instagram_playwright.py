@@ -260,7 +260,7 @@ async def collect_account(page, username: str, cutoff: datetime, followers: int 
                         pass
 
                     if likes is None:
-                        likes = -1
+                        likes = None
 
                     await post_page.close()
 
@@ -312,8 +312,8 @@ async def run_instagram_playwright(ig_username: str = None, ig_password: str = N
     print("[System] 가상 디스플레이(Xvfb) 시작...", flush=True)
     display = Display(visible=0, size=(1280, 800))
     display.start()
-
-    async with async_playwright() as p:
+    try:
+      async with async_playwright() as p:
         browser = await p.chromium.launch(
             headless=True,
             args=[
@@ -383,7 +383,7 @@ async def run_instagram_playwright(ig_username: str = None, ig_password: str = N
             
             # 수집된 데이터가 있으면 DB 및 이미지 다운로드 진행
             if posts:
-                download_images(posts)
+                await asyncio.get_event_loop().run_in_executor(None, download_images, posts)
                 saved = save_fashion_posts(posts)
                 log_crawl(source="instagram", game="fashion", status="success", count=saved)
                 print(f"[Instagram] @{username}: {saved}개 저장 완료", flush=True)
@@ -393,8 +393,9 @@ async def run_instagram_playwright(ig_username: str = None, ig_password: str = N
 
         await browser.close()
 
-    display.stop()
-    print("[System] 가상 디스플레이 종료", flush=True)
+    finally:
+        display.stop()
+        print("[System] 가상 디스플레이 종료", flush=True)
 
     print(f"[Instagram] 전체 완료: 총 {total}개 저장", flush=True)
     return total

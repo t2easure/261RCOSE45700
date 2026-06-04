@@ -10,16 +10,18 @@ DATA_DIR = Path(__file__).parent.parent / "data" / "images"
 
 _model = None
 _processor = None
+_model_lock = __import__("threading").Lock()
 
 
 def get_model():
     global _model, _processor
-    if _model is None:
-        from transformers import CLIPModel, CLIPProcessor
-        print(f"[Embedder] CLIP 모델 로딩: {MODEL_NAME}")
-        _model = CLIPModel.from_pretrained(MODEL_NAME)
-        _processor = CLIPProcessor.from_pretrained(MODEL_NAME)
-        _model.eval()
+    with _model_lock:
+        if _model is None:
+            from transformers import CLIPModel, CLIPProcessor
+            print(f"[Embedder] CLIP 모델 로딩: {MODEL_NAME}")
+            _model = CLIPModel.from_pretrained(MODEL_NAME)
+            _processor = CLIPProcessor.from_pretrained(MODEL_NAME)
+            _model.eval()
     return _model, _processor
 
 
