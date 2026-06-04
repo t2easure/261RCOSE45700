@@ -133,12 +133,21 @@ async def collect_account(page, username: str, cutoff: datetime, followers: int 
         await page.goto(f"https://www.instagram.com/{username}/", wait_until="domcontentloaded", timeout=30000)
         await asyncio.sleep(3)
 
-        # 팔로워 수 파싱
+        # 팔로워 수 파싱 (만/천 단위 처리)
         try:
             follower_text = await page.locator('a[href*="/followers/"] span, span:has-text("팔로워")').first.inner_text(timeout=3000)
-            nums = re.findall(r'[\d,]+', follower_text.replace(',', ''))
-            if nums:
-                followers = int(nums[0])
+            ft = follower_text.strip().replace(',', '')
+            m = re.search(r'([\d.]+)\s*([만천KkMm]?)', ft)
+            if m:
+                val = float(m.group(1))
+                unit = m.group(2).lower()
+                if unit in ('만',):
+                    val *= 10000
+                elif unit in ('천', 'k'):
+                    val *= 1000
+                elif unit == 'm':
+                    val *= 1000000
+                followers = int(val)
         except Exception:
             pass
 
@@ -211,9 +220,9 @@ async def collect_account(page, username: str, cutoff: datetime, followers: int 
 
                             # 다음 슬라이드 버튼 클릭
                             next_btn = post_page.locator('button[aria-label="다음"], button[aria-label="Next"]').first
-                            if await next_btn.is_visible(timeout=1000):
+                            if await next_btn.is_visible(timeout=200):
                                 await next_btn.click()
-                                await asyncio.sleep(0.8)
+                                await asyncio.sleep(0.5)
                             else:
                                 break
                     except Exception:
