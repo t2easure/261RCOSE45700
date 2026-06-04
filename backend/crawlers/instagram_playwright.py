@@ -137,6 +137,7 @@ async def collect_account(page, username: str, cutoff: datetime, followers: int 
     print(f" -> [추적 3-2] {username} DB 조회 완료! 인스타 페이지 접속 시도...", flush=True)
     try:
         await page.goto(f"https://www.instagram.com/{username}/", wait_until="commit", timeout=30000)
+        await page.wait_for_load_state("domcontentloaded", timeout=15000)
         print(f" -> [추적 3-3] {username} 인스타 페이지 접속 성공!", flush=True)
         await asyncio.sleep(3)
 
