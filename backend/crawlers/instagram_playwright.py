@@ -130,7 +130,7 @@ async def collect_account(page, username: str, cutoff: datetime, followers: int 
     existing_urls = await asyncio.get_event_loop().run_in_executor(None, get_existing_instagram_urls)
 
     try:
-        await page.goto(f"https://www.instagram.com/{username}/", wait_until="domcontentloaded", timeout=30000)
+        await page.goto(f"https://www.instagram.com/{username}/", wait_until="commit", timeout=30000)
         await asyncio.sleep(3)
 
         if "login" in page.url or "accounts" in page.url:
@@ -181,7 +181,7 @@ async def collect_account(page, username: str, cutoff: datetime, followers: int 
                 # 게시물 페이지 접속해서 이미지 URL 및 날짜 가져오기
                 try:
                     post_page = await page.context.new_page()
-                    await post_page.goto(f"https://www.instagram.com/p/{shortcode}/", wait_until="domcontentloaded", timeout=20000)
+                    await post_page.goto(f"https://www.instagram.com/p/{shortcode}/", wait_until="commit", timeout=20000)
                     await asyncio.sleep(1.5)
 
                     # 날짜
