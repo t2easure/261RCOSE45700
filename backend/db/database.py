@@ -356,23 +356,37 @@ def search_fashion_posts(
             """, [query_embedding] + filter_params + [CANDIDATE_SIZE])
             vec_results = [dict(r) for r in cur.fetchall()]
             
-            # 2. 키워드 검색 - ts_rank (BM25 근사) 사용
+            # 2. 키워드 검색 - pg_search BM25 사용
             kw_results = []
             if keywords:
-                kw_query = " & ".join(keywords)
-                cur.execute(f"""
-                    SELECT {select_cols},
-                           ts_rank(
-                               to_tsvector('simple', coalesce(caption_ai,'') || ' ' || coalesce(caption_meta,'')),
-                               plainto_tsquery('simple', %s)
-                           ) AS kw_score
-                    FROM fashion_posts {where}
-                    AND to_tsvector('simple', coalesce(caption_ai,'') || ' ' || coalesce(caption_meta,''))
-                        @@ plainto_tsquery('simple', %s)
-                    ORDER BY kw_score DESC
-                    LIMIT %s
-                """, [kw_query] + filter_params + [kw_query, CANDIDATE_SIZE])
-                kw_results = [dict(r) for r in cur.fetchall()]
+                bm25_query = " OR ".join(keywords)
+                try:
+                    cur.execute(f"""
+                        SELECT {select_cols},
+                               paradedb.score(id) AS kw_score
+                        FROM fashion_posts
+                        WHERE id @@@ paradedb.parse(%s)
+                        AND {" AND ".join(conditions) if conditions else "TRUE"}
+                        ORDER BY kw_score DESC
+                        LIMIT %s
+                    """, [bm25_query] + filter_params + [CANDIDATE_SIZE])
+                    kw_results = [dict(r) for r in cur.fetchall()]
+                except Exception:
+                    # fallback to ts_rank if pg_search fails
+                    kw_query = " & ".join(keywords)
+                    cur.execute(f"""
+                        SELECT {select_cols},
+                               ts_rank(
+                                   to_tsvector('simple', coalesce(caption_ai,'') || ' ' || coalesce(caption_meta,'')),
+                                   plainto_tsquery('simple', %s)
+                               ) AS kw_score
+                        FROM fashion_posts {where}
+                        AND to_tsvector('simple', coalesce(caption_ai,'') || ' ' || coalesce(caption_meta,''))
+                            @@ plainto_tsquery('simple', %s)
+                        ORDER BY kw_score DESC
+                        LIMIT %s
+                    """, [kw_query] + filter_params + [kw_query, CANDIDATE_SIZE])
+                    kw_results = [dict(r) for r in cur.fetchall()]
 
     # 3. RRF 계산
     rrf_scores: dict[int, float] = {}
