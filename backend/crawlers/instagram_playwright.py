@@ -156,6 +156,11 @@ async def collect_account(page, username: str, cutoff: datetime, followers: int 
         scroll_count = 0
         max_scrolls = 10
 
+        # 첫 스크롤로 포스트 그리드 로딩 트리거
+        for _ in range(3):
+            await page.evaluate("window.scrollBy(0, 800)")
+            await asyncio.sleep(1)
+
         while scroll_count < max_scrolls:
             # 현재 페이지의 게시물 링크 수집
             hrefs = await page.evaluate("""
