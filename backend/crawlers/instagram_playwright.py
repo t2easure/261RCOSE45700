@@ -167,6 +167,8 @@ async def collect_account(page, username: str, cutoff: datetime, followers: int 
         seen = set()
         scroll_count = 0
         max_scrolls = 10
+        empty_scrolls = 0
+        max_empty_scrolls = 3
 
         print(f" -> [추적 3-4] {username} 피드 스크롤 및 수집 시작...", flush=True)
         try:
@@ -294,7 +296,9 @@ async def collect_account(page, username: str, cutoff: datetime, followers: int 
                         await post_page.close()
 
             if not new_found:
-                break
+                empty_scrolls += 1
+                if empty_scrolls >= max_empty_scrolls:
+                    break
 
             await page.evaluate("window.scrollBy(0, 1200)")
             await asyncio.sleep(2)
