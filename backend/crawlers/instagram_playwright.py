@@ -133,6 +133,10 @@ async def collect_account(page, username: str, cutoff: datetime, followers: int 
         await page.goto(f"https://www.instagram.com/{username}/", wait_until="domcontentloaded", timeout=30000)
         await asyncio.sleep(3)
 
+        if "login" in page.url or "accounts" in page.url:
+            print(f"[Instagram] 세션 만료 감지 ({page.url}) → 수집 중단")
+            return posts
+
         # 팔로워 수 파싱 (만/천 단위 처리)
         try:
             follower_text = await page.locator('a[href*="/followers/"] span, span:has-text("팔로워")').first.inner_text(timeout=3000)
@@ -377,19 +381,6 @@ async def run_instagram_playwright(ig_username: str = None, ig_password: str = N
 
         # 세션 로드 or 로그인
         session_loaded = await load_session(context)
-        if session_loaded:
-            # EC2 IP에서 기존 세션이 무효화됐을 수 있으므로 확인
-            try:
-                await page.goto("https://www.instagram.com/", wait_until="domcontentloaded", timeout=20000)
-                await asyncio.sleep(2)
-                if "login" in page.url or "accounts" in page.url:
-                    print("[Instagram] 세션 만료 또는 IP 차단 감지 → 재로그인 시도")
-                    session_loaded = False
-                else:
-                    print(f"[Instagram] 세션 유효 확인: {page.url}")
-            except Exception as e:
-                print(f"[Instagram] 세션 확인 실패: {e}")
-                session_loaded = False
         if not session_loaded:
             if not ig_username or not ig_password:
                 print("[Instagram] 세션 없음, 환경변수 INSTAGRAM_USERNAME/INSTAGRAM_PASSWORD 필요")
