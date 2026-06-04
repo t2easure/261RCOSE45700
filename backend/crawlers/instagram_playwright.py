@@ -158,11 +158,14 @@ async def collect_account(page, username: str, cutoff: datetime, followers: int 
 
         while scroll_count < max_scrolls:
             # 현재 페이지의 게시물 링크 수집
-            anchors = await page.locator('a[href*="/p/"]').all()
+            hrefs = await page.evaluate("""
+                () => Array.from(document.querySelectorAll('a[href*="/p/"]')).map(a => a.href)
+            """)
+            anchors = hrefs
             new_found = False
 
-            for anchor in anchors:
-                href = await anchor.get_attribute('href')
+            for href in anchors:
+                href = href
                 if not href or href in seen:
                     continue
                 seen.add(href)
