@@ -156,26 +156,14 @@ async def collect_account(page, username: str, cutoff: datetime, followers: int 
         scroll_count = 0
         max_scrolls = 10
 
-        # 포스트 그리드 로딩 대기 (최대 15초)
-        try:
-            await page.wait_for_selector('a[href*="/p/"]', timeout=15000)
-        except Exception:
-            pass
-        # 스크롤로 추가 로딩 트리거
-        for _ in range(3):
-            await page.evaluate("window.scrollBy(0, 800)")
-            await asyncio.sleep(1)
 
         while scroll_count < max_scrolls:
             # 현재 페이지의 게시물 링크 수집
-            hrefs = await page.evaluate("""
-                () => Array.from(document.querySelectorAll('a[href*="/p/"]')).map(a => a.href)
-            """)
-            anchors = hrefs
+            anchors = await page.locator('a[href*="/p/"]').all()
             new_found = False
 
-            for href in anchors:
-                href = href
+            for anchor in anchors:
+                href = await anchor.get_attribute('href')
                 if not href or href in seen:
                     continue
                 seen.add(href)
