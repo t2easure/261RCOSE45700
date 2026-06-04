@@ -282,11 +282,12 @@ def get_fashion_posts_all(limit: int = 50, offset: int = 0, source: str = None) 
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(
                 f"""
-                SELECT id, image_url, post_url, account_name, source, posted_at,
+                SELECT DISTINCT ON (image_url)
+                       id, image_url, post_url, account_name, source, posted_at,
                        caption_ai, caption_meta, collected_at, price, material_info, likes, followers
                 FROM fashion_posts
                 {where}
-                ORDER BY collected_at DESC NULLS LAST
+                ORDER BY image_url, collected_at DESC NULLS LAST
                 LIMIT %s OFFSET %s
                 """,
                 params + [limit, offset],

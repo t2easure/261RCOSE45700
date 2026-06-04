@@ -409,7 +409,7 @@ async def run_instagram_playwright(ig_username: str = None, ig_password: str = N
                 log_crawl(source="instagram", game="fashion", status="success", count=saved)
                 print(f"[Instagram] @{username}: {saved}개 저장")
                 total += saved
-            await asyncio.sleep(5)
+            await asyncio.sleep(10)
 
         await browser.close()
 
