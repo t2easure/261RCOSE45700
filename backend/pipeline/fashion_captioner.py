@@ -112,7 +112,7 @@ async def process_post(ant_client, http_client, post, semaphore, retries=3):
                 img.save(buf, format="JPEG")
                 base64_data = base64.b64encode(buf.getvalue()).decode()
                 media_type = "image/jpeg"
-        except Exception:
+        except:
             pass
 
         for attempt in range(retries):
@@ -137,11 +137,11 @@ async def process_post(ant_client, http_client, post, semaphore, retries=3):
                     caption = getattr(response.content, 'text', str(response.content)).strip()
 
                 if caption.upper().startswith("SKIP"):
-                    await asyncio.get_event_loop().run_in_executor(None, delete_post, post["id"])
+                    delete_post(post["id"])
                     tqdm.write(f"🚫 ID #{post['id']} 여성 패션 아님 → 삭제")
                     return False
-
-                await asyncio.get_event_loop().run_in_executor(None, save_caption, post["id"], caption)
+                    
+                save_caption(post["id"], caption)
                 return True
                 
             except Exception as e:

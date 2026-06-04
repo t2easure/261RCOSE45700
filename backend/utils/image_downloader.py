@@ -17,7 +17,7 @@ def download_image(image_url: str, account_name: str) -> str | None:
     filename = hashlib.md5(image_url.encode()).hexdigest() + f".{ext}"
     filepath = save_dir / filename
 
-    if filepath.exists() and filepath.stat().st_size > 10000:
+    if filepath.exists():
         return str(filepath)
 
     try:

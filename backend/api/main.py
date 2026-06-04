@@ -135,39 +135,26 @@ def posts_by_ids(ids: str):
     return [{"id": r[0], "image_url": r[1], "account_name": r[2]} for r in rows]
 
 
-def _image_ok(account_name: str, image_url: str) -> bool:
-    if not image_url:
-        return False
-    import hashlib
-    md5 = hashlib.md5(image_url.encode()).hexdigest()
-    ext = image_url.split("?")[0].split(".")[-1]
-    if ext.lower() not in ("jpg", "jpeg", "png", "webp"):
-        ext = "jpg"
-    fpath = IMAGES_DIR / account_name / f"{md5}.{ext}"
-    if fpath.exists() and fpath.stat().st_size < 10000:
-        return False
-    return True
-
-
 @app.get("/posts")
 def posts(source: str = None, limit: int = 50, offset: int = 0):
     rows = get_fashion_posts_all(limit=limit, offset=offset, source=source)
-    items = [
-        {
-            "id": r["id"],
-            "image_url": r["image_url"],
-            "post_url": r.get("post_url"),
-            "account_name": r["account_name"],
-            "source": r["source"],
-            "posted_at": str(r["posted_at"]) if r["posted_at"] else None,
-            "caption_ai": r["caption_ai"],
-            "caption_meta": r.get("caption_meta"),
-            "price": r.get("price"),
-            "material_info": r.get("material_info"),
-            "likes": r.get("likes"),
-            "followers": r.get("followers"),
-        }
-        for r in rows
-        if r.get("source") != "instagram" or _image_ok(r["account_name"], r["image_url"]) is not False
-    ]
-    return {"total": len(items), "items": items}
+    return {
+        "total": len(rows),
+        "items": [
+            {
+                "id": r["id"],
+                "image_url": r["image_url"],
+                "post_url": r.get("post_url"),
+                "account_name": r["account_name"],
+                "source": r["source"],
+                "posted_at": str(r["posted_at"]) if r["posted_at"] else None,
+                "caption_ai": r["caption_ai"],
+                "caption_meta": r.get("caption_meta"),
+                "price": r.get("price"),
+                "material_info": r.get("material_info"),
+                "likes": r.get("likes"),
+                "followers": r.get("followers"),
+            }
+            for r in rows
+        ],
+    }
