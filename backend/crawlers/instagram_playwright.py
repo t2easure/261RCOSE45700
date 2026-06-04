@@ -156,7 +156,12 @@ async def collect_account(page, username: str, cutoff: datetime, followers: int 
         scroll_count = 0
         max_scrolls = 10
 
-        # 첫 스크롤로 포스트 그리드 로딩 트리거
+        # 포스트 그리드 로딩 대기 (최대 15초)
+        try:
+            await page.wait_for_selector('a[href*="/p/"]', timeout=15000)
+        except Exception:
+            pass
+        # 스크롤로 추가 로딩 트리거
         for _ in range(3):
             await page.evaluate("window.scrollBy(0, 800)")
             await asyncio.sleep(1)
