@@ -80,8 +80,8 @@ async def load_session(context) -> bool:
 async def login(page, username: str, password: str) -> bool:
     try:
         await page.goto("https://www.instagram.com/accounts/login/", wait_until="commit", timeout=30000)
+        await page.wait_for_load_state("domcontentloaded", timeout=30000)
         await asyncio.sleep(3)
-        await asyncio.sleep(2)
 
         # 쿠키 동의
         for sel in ['[data-testid="cookie-policy-manage-dialog-accept-button"]', 'button:has-text("Allow")', 'button:has-text("허용")']:
