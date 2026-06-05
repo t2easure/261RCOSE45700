@@ -141,7 +141,7 @@ def _trend_agent(posts: list[dict], client: anthropic.Anthropic) -> dict:
             model="claude-haiku-4-5-20251001",
             max_tokens=30,
             messages=[{"role": "user", "content": (
-                f"아래 패션 이미지 설명들의 공통 스타일을 한국어 명사형 3~5단어로만 답해. 예시: '미니멀 오버사이즈 캐주얼'. 단어만 출력, 설명 금지:\n{sample_captions[:600]}"
+                f"아래 패션 이미지 설명들의 공통 스타일을 한국어 명사형 3~5단어로만 답해. 예시: '빈티지 데님 캐주얼', '시크 오피스 룩', '러블리 플로럴 원피스'. 단어만 출력, 설명 금지. 모든 트렌드명이 같은 단어로 시작하지 않도록 해:\n{sample_captions[:600]}"
             )}]
         )
         desc_res = client.messages.create(
