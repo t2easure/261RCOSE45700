@@ -1809,7 +1809,7 @@ export default function Home() {
               <div key={type} className="space-y-3">
                 <p className="text-sm font-medium text-brown-600">{type === 'influencers' ? '인플루언서' : '브랜드'}</p>
                 <div className="flex flex-wrap gap-2">
-                  {instagramConfig?.[type].map((acc) => (
+                  {instagramConfig?.[type]?.map((acc) => (
                     <span key={acc} className="flex items-center gap-1 rounded-full bg-brown-100 px-3 py-1 text-xs text-brown-700">
                       @{acc}
                       <button
