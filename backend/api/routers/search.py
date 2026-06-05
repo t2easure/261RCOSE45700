@@ -107,7 +107,7 @@ def search(
     accounts: str = Query(None, description="계정 필터 (쉼표 구분)"),
 ):
     expanded_text, keywords = expand_query(q)
-    query_embedding = get_query_embedding(expanded_text)
+    query_embedding = get_query_embedding(q)  # 원본 쿼리로 임베딩 (확장 텍스트는 키워드 검색에만 사용)
 
     sources_list = [s.strip() for s in sources.split(",")] if sources else None
     accounts_list = [a.strip() for a in accounts.split(",")] if accounts else None
