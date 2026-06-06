@@ -347,14 +347,14 @@ export default function Home() {
           <section className="relative overflow-hidden bg-brown-700 text-cream-50">
             <div className="mx-auto max-w-7xl px-8 py-20">
               <p className="mb-3 text-xs font-medium tracking-[0.3em] text-brown-200 uppercase">
-                AI Fashion Intelligence · 20대 여성 트렌드
+                AI-Powered Fashion Intelligence · 데이터 기반 트렌드 분석
               </p>
               <h1 className="font-serif text-6xl font-bold leading-tight tracking-wide uppercase">
-                Discover the<br />Art of Trends
+                Know What's<br />Next in Fashion
               </h1>
               <p className="mt-5 max-w-xl text-base text-brown-200 leading-7">
-                인플루언서 & SPA 브랜드 이미지를 AI로 분석하여<br />
-                20대 여성 패션 트렌드를 한눈에 파악합니다
+                수천 개의 인플루언서 & 브랜드 이미지를 AI로 분석하여<br />
+                20대 여성 패션 트렌드를 빠르고 정확하게 파악합니다
               </p>
               <div className="mt-10 max-w-2xl">
                 <SearchBar onSearch={handleSearch} loading={searchLoading} large />
@@ -623,7 +623,7 @@ export default function Home() {
               <h2 className="font-serif text-4xl font-bold uppercase tracking-wide text-brown-700">
                 Trend Reports
               </h2>
-              <p className="mt-2 text-sm text-brown-400">AI가 분석한 20대 여성 패션 트렌드 리포트</p>
+              <p className="mt-2 text-sm text-brown-400">실제 데이터 기반 · AI 분석 패션 트렌드 리포트</p>
             </div>
             {reportStatusMessage && (
               <div className="flex items-center gap-2">
@@ -886,7 +886,7 @@ export default function Home() {
                 return (
                   <div className="space-y-2">
                     <h3 className="font-serif text-xl font-bold text-brown-700">Trend Radar</h3>
-                    <p className="text-xs text-brown-400">AI가 수집된 이미지를 자동 분류한 이번 시즌 핵심 스타일 클러스터입니다. 이미지를 클릭하면 확대해서 볼 수 있어요.</p>
+                    <p className="text-xs text-brown-400">실제 수집된 이미지를 AI가 자동 분류한 이번 시즌 핵심 스타일 클러스터입니다. 데이터 기반 인사이트로 신뢰할 수 있는 트렌드를 확인하세요. 이미지를 클릭하면 확대해서 볼 수 있어요.</p>
                     <div className="rounded-xl bg-brown-50 px-3 py-2.5 text-[11px] text-brown-400 space-y-1.5">
                       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                         <span className="font-medium text-brown-600">★ 트렌드 지수 (0~10점)</span>
