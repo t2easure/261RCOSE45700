@@ -8,6 +8,7 @@ import Navbar, { type Tab } from '@/components/Navbar'
 import SearchBar from '@/components/SearchBar'
 import ImageCard from '@/components/ImageCard'
 import CrawlButton from '@/components/CrawlButton'
+import KeywordHeatmap from '@/components/KeywordHeatmap'
 
 interface Post {
   id: number
@@ -1351,6 +1352,18 @@ export default function Home() {
                           )}
                         </div>
                       )}
+                      {/* 월별 히트맵 */}
+                      {sorted.length >= 2 && (
+                        <div className="rounded-2xl bg-white p-6 shadow-sm">
+                          <p className="text-sm font-semibold text-brown-700 mb-0.5">키워드 히트맵 — 월별</p>
+                          <p className="text-xs text-brown-400 mb-4">가로축: 월 · 세로축: 트렌드 키워드 · 색상: 신호강도 · ↑ 급상승 감지</p>
+                          <KeywordHeatmap
+                            reports={sorted}
+                            mode="monthly"
+                            onCellClick={(cluster, period) => setHeatmapDrill({ cluster, period })}
+                          />
+                        </div>
+                      )}
                     </div>
                   )
                 })()}
@@ -1470,6 +1483,18 @@ export default function Home() {
                         </div>
                       )
                     })()}
+                    {/* 주간 히트맵 */}
+                    {weeklySorted.length >= 2 && (
+                      <div className="rounded-2xl bg-white p-6 shadow-sm">
+                        <p className="text-sm font-semibold text-brown-700 mb-0.5">키워드 히트맵 — 주별</p>
+                        <p className="text-xs text-brown-400 mb-4">가로축: 주차 · 세로축: 트렌드 키워드 · 색상: 신호강도 · ↑ 급상승 감지</p>
+                        <KeywordHeatmap
+                          reports={weeklySorted}
+                          mode="weekly"
+                          onCellClick={(cluster, period) => setHeatmapDrill({ cluster, period })}
+                        />
+                      </div>
+                    )}
                     </>
                   )
                 })()}
