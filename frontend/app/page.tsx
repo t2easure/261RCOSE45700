@@ -791,9 +791,12 @@ export default function Home() {
                           ))}
                         </div>
                       )}
-                      <div className="text-sm leading-7 text-brown-600 pt-2 border-t border-brown-50 space-y-2">
-                        {selectedReport.summary.split(/(?=\d\))/).filter(Boolean).map((line, i) => (
-                          <p key={i}>{line.trim()}</p>
+                      <div className="text-sm leading-7 text-brown-600 pt-2 border-t border-brown-50 space-y-1.5">
+                        {selectedReport.summary.split(/\d\)\s*/).filter(Boolean).map((line, i) => (
+                          <p key={i} className="flex items-start gap-2">
+                            <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-brown-400" />
+                            <span>{line.trim()}</span>
+                          </p>
                         ))}
                       </div>
                     </>
