@@ -785,9 +785,9 @@ export default function Home() {
                       <p className="text-[10px] tracking-widest text-brown-300 uppercase font-medium">{selectedReport.post_count}개 이미지 분석</p>
                       <h2 className="font-serif text-2xl font-bold text-brown-800">{title}</h2>
                       {clusters.length > 0 && (
-                        <div className="flex flex-wrap gap-1.5 pt-1">
+                        <div className="flex flex-wrap gap-2 pt-2">
                           {clusters.map((c, i) => (
-                            <span key={i} className="rounded-full bg-brown-100 px-2.5 py-0.5 text-[11px] text-brown-600">{c.short_name ?? c.trend_name}</span>
+                            <span key={i} className="rounded-full bg-brown-700 px-3.5 py-1 text-xs font-medium text-cream-50 tracking-wide">{c.short_name ?? c.trend_name}</span>
                           ))}
                         </div>
                       )}
