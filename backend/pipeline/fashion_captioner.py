@@ -167,7 +167,7 @@ async def run_captioning(batch_size: int = 200, per_account: int = 50, since: st
         print("✨ 분석할 이미지가 없습니다.")
         return
 
-    semaphore = asyncio.Semaphore(20)
+    semaphore = asyncio.Semaphore(5)
     
     async with httpx.AsyncClient() as http_client:
         tasks = [process_post(ant_client, http_client, post, semaphore) for post in posts]
