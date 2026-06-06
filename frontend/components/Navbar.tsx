@@ -3,7 +3,7 @@
 export type Tab = 'dashboard' | 'search' | 'reports' | 'data' | 'manage'
 
 const TABS: { value: Tab; label: string }[] = [
-  { value: 'dashboard', label: 'Trends' },
+  { value: 'dashboard', label: 'Home' },
   { value: 'search', label: 'Search' },
   { value: 'reports', label: 'Reports' },
   { value: 'data', label: 'Data' },
