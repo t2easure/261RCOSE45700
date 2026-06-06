@@ -135,9 +135,19 @@ def posts_by_ids(ids: str):
     return [{"id": r[0], "image_url": r[1], "account_name": r[2]} for r in rows]
 
 
+@app.get("/posts/accounts")
+def posts_accounts():
+    from db.database import _get_connection
+    import psycopg2.extras
+    with _get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT DISTINCT account_name FROM fashion_posts WHERE account_name IS NOT NULL ORDER BY account_name")
+            return [r[0] for r in cur.fetchall()]
+
+
 @app.get("/posts")
-def posts(source: str = None, limit: int = 50, offset: int = 0):
-    rows = get_fashion_posts_all(limit=limit, offset=offset, source=source)
+def posts(source: str = None, limit: int = 50, offset: int = 0, account_name: str = None, sort: str = "collected", date_from: str = None, date_to: str = None):
+    rows = get_fashion_posts_all(limit=limit, offset=offset, source=source, account_name=account_name, sort=sort, date_from=date_from, date_to=date_to)
     return {
         "total": len(rows),
         "items": [

@@ -271,13 +271,36 @@ def save_embedding(post_id: int, embedding: list[float]) -> None:
         conn.commit()
 
 
-def get_fashion_posts_all(limit: int = 50, offset: int = 0, source: str = None) -> list[dict]:
-    """전체 패션 포스팅 조회. 최신 수집순 정렬."""
+def get_fashion_posts_all(
+    limit: int = 50,
+    offset: int = 0,
+    source: str = None,
+    account_name: str = None,
+    sort: str = "collected",
+    date_from: str = None,
+    date_to: str = None,
+) -> list[dict]:
+    """전체 패션 포스팅 조회."""
     where = "WHERE TRUE"
     params: list[Any] = []
     if source:
         where += " AND source = %s"
         params.append(source)
+    if account_name:
+        where += " AND account_name = %s"
+        params.append(account_name)
+    if date_from:
+        where += " AND posted_at >= %s"
+        params.append(date_from)
+    if date_to:
+        where += " AND posted_at <= %s"
+        params.append(date_to)
+
+    order = {
+        "likes": "likes DESC NULLS LAST, collected_at DESC",
+        "posted": "posted_at DESC NULLS LAST",
+    }.get(sort, "collected_at DESC NULLS LAST")
+
     with _get_connection() as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(
@@ -286,12 +309,31 @@ def get_fashion_posts_all(limit: int = 50, offset: int = 0, source: str = None) 
                        caption_ai, caption_meta, collected_at, price, material_info, likes, followers
                 FROM fashion_posts
                 {where}
-                ORDER BY collected_at DESC NULLS LAST
+                ORDER BY {order}
                 LIMIT %s OFFSET %s
                 """,
                 params + [limit, offset],
             )
             return [dict(r) for r in cur.fetchall()]
+
+
+def get_all_posts_for_recaption(limit: int = 1000, per_account: int = 500) -> list[dict]:
+    """전체 포스트 조회 (caption 여부 무관). 재캡셔닝용."""
+    query = """
+        SELECT id, image_url, account_name, source
+        FROM (
+            SELECT id, image_url, account_name, source,
+                   ROW_NUMBER() OVER (PARTITION BY account_name ORDER BY id) AS rn
+            FROM fashion_posts
+            WHERE image_url IS NOT NULL
+        ) sub
+        WHERE rn <= %s
+        LIMIT %s
+    """
+    with _get_connection() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(query, (per_account, limit))
+            return [dict(row) for row in cur.fetchall()]
 
 
 def get_fashion_stats() -> dict:

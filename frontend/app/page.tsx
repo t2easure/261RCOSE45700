@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import dynamic from 'next/dynamic'
 const TrendWordCloud = dynamic(() => import('@/components/TrendWordCloud'), { ssr: false })
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, RadarChart, Radar, PolarGrid, PolarAngleAxis } from 'recharts'
@@ -110,6 +110,7 @@ interface FashionReport {
   trend_clusters: string | TrendCluster[] | null
   engagement_top: string | EngagementPost[] | null
   lead_signals: string | LeadSignal[] | null
+  attribute_trends: string | Record<string, [string, number][]> | null
   post_count: number
 }
 
@@ -157,6 +158,8 @@ export default function Home() {
   const [reportSubTab, setReportSubTab] = useState<'weekly' | 'monthly' | 'custom'>('weekly')
   const [lightbox, setLightbox] = useState<{ url: string; caption?: string } | null>(null)
   const [heatmapDrill, setHeatmapDrill] = useState<{ cluster: TrendCluster; period: string } | null>(null)
+  const [weeklyTopExpanded, setWeeklyTopExpanded] = useState(false)
+  const [monthlyTopExpanded, setMonthlyTopExpanded] = useState(false)
 
   // 통계
   const [stats, setStats] = useState<Stats | null>(null)
@@ -170,6 +173,11 @@ export default function Home() {
   const [dataSource, setDataSource] = useState<'all' | 'instagram' | 'lookbook'>('all')
   const [dataOffset, setDataOffset] = useState(0)
   const [hasMore, setHasMore] = useState(true)
+  const [dataAccount, setDataAccount] = useState<string>('')
+  const [dataSort, setDataSort] = useState<'collected' | 'likes' | 'posted'>('collected')
+  const [dataDateFrom, setDataDateFrom] = useState<string>('')
+  const [dataDateTo, setDataDateTo] = useState<string>('')
+  const [dataAccounts, setDataAccounts] = useState<string[]>([])
   const DATA_LIMIT = 40
 
   // 관리 탭
@@ -205,17 +213,28 @@ export default function Home() {
     } catch {} finally { setReportsLoading(false) }
   }, [])
 
-  const fetchAllPosts = useCallback(async (source: string, offset: number, append = false) => {
+  const fetchAllPosts = useCallback(async (
+    source: string, offset: number, append = false,
+    opts?: { account?: string; sort?: string; dateFrom?: string; dateTo?: string }
+  ) => {
     setAllPostsLoading(true)
     try {
       const params = new URLSearchParams({ limit: String(DATA_LIMIT), offset: String(offset) })
       if (source !== 'all') params.set('source', source)
+      if (opts?.account) params.set('account_name', opts.account)
+      if (opts?.sort && opts.sort !== 'collected') params.set('sort', opts.sort)
+      if (opts?.dateFrom) params.set('date_from', opts.dateFrom)
+      if (opts?.dateTo) params.set('date_to', opts.dateTo)
       const res = await fetch(`/api/posts?${params}`)
       if (res.ok) {
         const data = await res.json()
         const items: Post[] = data.items ?? data
         setAllPosts(prev => append ? [...prev, ...items] : items)
         setHasMore(items.length === DATA_LIMIT)
+        if (!append && offset === 0) {
+          const accountsRes = await fetch('/api/posts/accounts')
+          if (accountsRes.ok) setDataAccounts(await accountsRes.json())
+        }
       }
     } catch {} finally { setAllPostsLoading(false) }
   }, [])
@@ -227,9 +246,11 @@ export default function Home() {
       fetch('/api/search/accounts').then(r => r.json()).then(setAvailableAccounts).catch(() => {})
     }
   }, [tab])
+  const dataFilterOpts = useMemo(() => ({ account: dataAccount, sort: dataSort, dateFrom: dataDateFrom, dateTo: dataDateTo }), [dataAccount, dataSort, dataDateFrom, dataDateTo])
+
   useEffect(() => {
-    if (tab === 'data') { setDataOffset(0); setHasMore(true); fetchAllPosts(dataSource, 0) }
-  }, [tab, dataSource, fetchAllPosts])
+    if (tab === 'data') { setDataOffset(0); setHasMore(true); fetchAllPosts(dataSource, 0, false, dataFilterOpts) }
+  }, [tab, dataSource, dataFilterOpts, fetchAllPosts])
 
   useEffect(() => {
     if (tab !== 'manage') return
@@ -329,7 +350,7 @@ export default function Home() {
   function handleLoadMore() {
     const next = dataOffset + DATA_LIMIT
     setDataOffset(next)
-    fetchAllPosts(dataSource, next, true)
+    fetchAllPosts(dataSource, next, true, dataFilterOpts)
   }
 
   function formatDate(iso: string) {
@@ -793,10 +814,10 @@ export default function Home() {
                         </div>
                       )}
                       <div className="text-sm leading-7 text-brown-600 pt-2 border-t border-brown-50 space-y-1.5">
-                        {selectedReport.summary.split(/\d\)\s*/).filter(Boolean).map((line, i) => (
+                        {selectedReport.summary.split(/\n|\d\)\s*/).filter(Boolean).map(s => s.replace(/(\s*(입니다|했습니다|합니다|됩니다|있습니다|습니다|ㅂ니다)\.?$)/, '').trim()).filter(Boolean).map((line, i) => (
                           <p key={i} className="flex items-start gap-2">
                             <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-brown-400" />
-                            <span>{line.trim()}</span>
+                            <span>{line}</span>
                           </p>
                         ))}
                       </div>
@@ -1018,12 +1039,14 @@ export default function Home() {
                                 })()}
 
                                 {c.description && (
-                                  <details className="group">
-                                    <summary className="list-none cursor-pointer">
-                                      <p className="text-[12px] leading-5 text-brown-500 line-clamp-3 group-open:line-clamp-none">{c.description}</p>
-                                      <span className="text-[10px] text-brown-300 group-open:hidden">더 보기</span>
-                                    </summary>
-                                  </details>
+                                  <ul className="space-y-0.5 mt-1">
+                                    {c.description.split(/[.\n]/).map(s => s.replace(/(\s*(입니다|했습니다|합니다|됩니다|있습니다|습니다|ㅂ니다)\.?$)/, '').trim()).filter(Boolean).map((line, li) => (
+                                      <li key={li} className="flex items-start gap-1.5 text-[12px] leading-5 text-brown-500">
+                                        <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-brown-300" />
+                                        <span>{line}</span>
+                                      </li>
+                                    ))}
+                                  </ul>
                                 )}
 
                                 {/* 트렌드 지수 레이더 */}
@@ -1137,6 +1160,50 @@ export default function Home() {
                 )
               })()}
 
+              {/* 속성별 트렌드 */}
+              {(() => {
+                const raw = selectedReport.attribute_trends
+                if (!raw) return null
+                const attrData: Record<string, [string, number][]> = typeof raw === 'string' ? JSON.parse(raw) : raw
+                const attrs = [
+                  { key: '스타일', emoji: '🎨' }, { key: '실루엣', emoji: '👗' }, { key: '컬러', emoji: '🎨' },
+                  { key: '소재', emoji: '🧵' }, { key: '아이템', emoji: '👜' }, { key: '디테일', emoji: '✨' },
+                ]
+                const hasData = attrs.some(a => (attrData[a.key]?.length ?? 0) > 0)
+                if (!hasData) return null
+                return (
+                  <div className="space-y-2">
+                    <h3 className="font-serif text-xl font-bold text-brown-700">속성별 트렌드</h3>
+                    <p className="text-xs text-brown-400">캡셔닝 데이터 기반 6대 속성별 상위 키워드 빈도</p>
+                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 pt-1">
+                      {attrs.map(({ key, emoji }) => {
+                        const items = attrData[key] ?? []
+                        if (!items.length) return null
+                        const max = items[0]?.[1] ?? 1
+                        return (
+                          <div key={key} className="rounded-2xl bg-white p-5 shadow-sm space-y-3">
+                            <p className="text-sm font-bold text-brown-700">{emoji} {key}</p>
+                            <div className="space-y-2">
+                              {items.slice(0, 5).map(([name, cnt]) => (
+                                <div key={name}>
+                                  <div className="flex justify-between text-xs mb-0.5">
+                                    <span className="text-brown-700 font-medium">{name}</span>
+                                    <span className="text-brown-400">{cnt}</span>
+                                  </div>
+                                  <div className="h-1.5 rounded-full bg-brown-100">
+                                    <div className="h-full rounded-full bg-brown-400" style={{ width: `${(cnt / max) * 100}%` }} />
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )
+              })()}
+
               {/* 3섹션: Engagement 폭발 스타일 */}
               {(() => {
                 const posts: EngagementPost[] = selectedReport.engagement_top
@@ -1241,127 +1308,91 @@ export default function Home() {
               <div className="space-y-6">
                 {/* 키워드 타임라인 + 시계열: weekly/monthly만 표시 */}
                 {reportSubTab === 'monthly' && (() => {
-                  const wordFreq: Record<string, number> = {}
-                  sorted.forEach(r => {
-                    const cs: TrendCluster[] = r.trend_clusters
-                      ? (typeof r.trend_clusters === 'string' ? JSON.parse(r.trend_clusters) : r.trend_clusters as TrendCluster[])
-                      : []
-                    cs.forEach(c => {
-                      const name = c.short_name ?? c.trend_name
-                      name.split(/\s+/).filter(w => w.length > 1).forEach(w => {
-                        wordFreq[w] = (wordFreq[w] ?? 0) + 1
-                      })
-                    })
-                  })
-                  const words = Object.entries(wordFreq).sort((a, b) => b[1] - a[1]).slice(0, 20)
-                  const maxFreq = words[0]?.[1] ?? 1
-
-                  // 월별 지속 트렌드
-                  const nameFreq: Record<string, number> = {}
-                  sorted.forEach(r => {
-                    const cs: TrendCluster[] = r.trend_clusters
-                      ? (typeof r.trend_clusters === 'string' ? JSON.parse(r.trend_clusters) : r.trend_clusters as TrendCluster[])
-                      : []
-                    cs.forEach(c => { const n = c.short_name ?? c.trend_name; nameFreq[n] = (nameFreq[n] ?? 0) + 1 })
-                  })
-                  const sustained = Object.entries(nameFreq).sort((a, b) => b[1] - a[1]).slice(0, 10)
-
                   const parseClustersM = (rep: FashionReport): TrendCluster[] =>
                     rep.trend_clusters ? (typeof rep.trend_clusters === 'string' ? JSON.parse(rep.trend_clusters) : rep.trend_clusters as TrendCluster[]) : []
 
-                  const nameCountM: Record<string, number> = {}
-                  sorted.forEach(r => parseClustersM(r).forEach(c => { const n = c.short_name ?? c.trend_name; nameCountM[n] = (nameCountM[n] ?? 0) + 1 }))
-                  const allMonthlyNames = [...new Set(sorted.flatMap(r => parseClustersM(r).map(c => c.short_name ?? c.trend_name)))].sort((a, b) => (nameCountM[b] ?? 0) - (nameCountM[a] ?? 0))
-                  const latestMonthlyClusters = parseClustersM(sorted[0] ?? sorted[sorted.length - 1])
+                  const nameFreq: Record<string, number> = {}
+                  sorted.forEach(r => parseClustersM(r).forEach(c => { const n = c.short_name ?? c.trend_name; nameFreq[n] = (nameFreq[n] ?? 0) + 1 }))
+                  const sustained = Object.entries(nameFreq).sort((a, b) => b[1] - a[1]).slice(0, 10)
 
                   return (
                     <div className="space-y-4">
-                      {/* 월간 트렌드 히트맵 */}
+                      {/* 히트맵 + 월간 지속 트렌드 나란히 */}
+                      <div className="flex gap-4 items-start">
+                        {sorted.length >= 2 && (
+                          <div className="rounded-2xl bg-white p-6 shadow-sm flex-1 min-w-0">
+                            <p className="text-sm font-semibold text-brown-700 mb-0.5">키워드 히트맵 — 월별</p>
+                            <p className="text-xs text-brown-400 mb-4">가로축: 월 · 세로축: 트렌드 키워드 · 색상: 신호강도 · ↑ 급상승 감지</p>
+                            <KeywordHeatmap
+                              reports={sorted}
+                              mode="monthly"
+                              onCellClick={(cluster, period) => setHeatmapDrill({ cluster, period })}
+                            />
+                          </div>
+                        )}
+                        {sustained.length > 0 && (
+                          <div className="rounded-2xl bg-white p-6 shadow-sm w-64 shrink-0">
+                            <p className="text-sm font-semibold text-brown-700 mb-0.5">월간 지속 트렌드</p>
+                            <p className="text-xs text-brown-400 mb-4">반복 등장한 트렌드</p>
+                            <div className="divide-y divide-brown-50">
+                              {sustained.map(([name, cnt], i) => (
+                                <div key={name} className="flex items-center justify-between py-2.5">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-[11px] text-brown-300 w-4 text-right shrink-0">{i + 1}</span>
+                                    <span className="text-xs font-medium text-brown-800">{name}</span>
+                                  </div>
+                                  <span className="text-[11px] font-semibold text-brown-500 bg-cream-100 rounded-full px-2 py-0.5 shrink-0 ml-2">{cnt}개월</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* 월별 TOP 트렌드 (폴딩) */}
                       {sorted.length > 0 && (
                         <div className="rounded-2xl bg-white p-6 shadow-sm">
-                          <p className="text-sm font-semibold text-brown-700 mb-0.5">월별 TOP 트렌드</p>
-                          <p className="text-xs text-brown-400 mb-3">각 월 신호강도 기준 상위 트렌드</p>
-                          <div className="flex flex-wrap gap-3 mb-4">
-                            <span className="flex items-center gap-1.5 text-[11px] text-brown-400"><span className="w-2.5 h-2.5 rounded-full bg-orange-400 inline-block"/>급상승</span>
-                            <span className="flex items-center gap-1.5 text-[11px] text-brown-400"><span className="w-2.5 h-2.5 rounded-full bg-green-400 inline-block"/>성장중</span>
-                            <span className="flex items-center gap-1.5 text-[11px] text-brown-400"><span className="w-2.5 h-2.5 rounded-full bg-yellow-300 inline-block"/>주목</span>
-                            <span className="flex items-center gap-1.5 text-[11px] text-brown-400"><span className="w-2.5 h-2.5 rounded-full bg-stone-300 inline-block"/>약세</span>
-                          </div>
-                          <div className="space-y-4">
-                            {[...sorted].reverse().map(r => {
-                              const clusters = parseClustersM(r)
-                                .filter(c => (c.signal_strength ?? 0) > 0)
-                                .sort((a, b) => (b.signal_strength ?? 0) - (a.signal_strength ?? 0))
-                                .slice(0, 5)
-                              if (!clusters.length) return null
-                              const period = r.period_start?.slice(0, 7) ?? ''
-                              return (
-                                <div key={r.id}>
-                                  <p className="text-[11px] font-semibold text-brown-400 mb-2">{period}</p>
-                                  <div className="flex flex-wrap gap-2">
-                                    {clusters.map((c, ci) => {
-                                      const sig = c.signal_strength ?? 0
-                                      const name = c.short_name ?? c.trend_name
-                                      const chipCls = sig >= 8 ? 'bg-orange-50 text-orange-600 border-orange-200' : sig >= 5 ? 'bg-green-50 text-green-700 border-green-200' : sig >= 3 ? 'bg-yellow-50 text-yellow-700 border-yellow-200' : 'bg-stone-50 text-stone-400 border-stone-200'
-                                      return (
-                                        <span
-                                          key={ci}
-                                          className={`inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs font-medium cursor-pointer hover:opacity-75 transition-opacity ${chipCls}`}
-                                          onClick={() => setHeatmapDrill({ cluster: c, period: r.period_start?.slice(0,10) ?? '' })}
-                                        >
-                                          {name}
-                                          <span className="opacity-60 text-[10px]">{(c.signal_strength ?? 0).toFixed(1)}</span>
-                                        </span>
-                                      )
-                                    })}
-                                  </div>
-                                </div>
-                              )
-                            })}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* 트렌드 신호강도 순위 */}
-
-                      {(words.length > 0 || sustained.length > 0) && (
-                        <div className="flex gap-4 items-start">
-                          {words.length > 0 && (
-                            <div className="rounded-2xl bg-white p-6 shadow-sm flex-1 min-w-0">
-                              <p className="text-sm font-semibold text-brown-700 mb-1">트렌드 키워드 빈도</p>
-                              <p className="text-xs text-brown-400 mb-4">클수록 더 많은 달에 등장한 키워드</p>
-                              <TrendWordCloud words={words.map(([text, value]) => ({ text, value }))} />
+                          <button
+                            className="flex w-full items-center justify-between"
+                            onClick={() => setMonthlyTopExpanded(v => !v)}
+                          >
+                            <div>
+                              <p className="text-sm font-semibold text-brown-700">월별 TOP 트렌드</p>
+                              <p className="text-xs text-brown-400 mt-0.5">각 월 신호강도 기준 상위 트렌드</p>
                             </div>
-                          )}
-                          {sustained.length > 0 && (
-                            <div className="rounded-2xl bg-white p-6 shadow-sm w-72 shrink-0">
-                              <p className="text-sm font-semibold text-brown-700 mb-0.5">월간 지속 트렌드</p>
-                              <p className="text-xs text-brown-400 mb-4">반복 등장한 트렌드</p>
-                              <div className="divide-y divide-brown-50">
-                                {sustained.map(([name, cnt], i) => (
-                                  <div key={name} className="flex items-center justify-between py-2.5">
-                                    <div className="flex items-center gap-2">
-                                      <span className="text-[11px] text-brown-300 w-4 text-right shrink-0">{i + 1}</span>
-                                      <span className="text-xs font-medium text-brown-800">{name}</span>
+                            <span className="text-brown-400 text-lg">{monthlyTopExpanded ? '▲' : '▼'}</span>
+                          </button>
+                          {monthlyTopExpanded && (
+                            <div className="mt-4 space-y-4">
+                              {[...sorted].reverse().map(r => {
+                                const clusters = parseClustersM(r)
+                                  .filter(c => (c.signal_strength ?? 0) > 0)
+                                  .sort((a, b) => (b.signal_strength ?? 0) - (a.signal_strength ?? 0))
+                                  .slice(0, 5)
+                                if (!clusters.length) return null
+                                const period = r.period_start?.slice(0, 7) ?? ''
+                                return (
+                                  <div key={r.id}>
+                                    <p className="text-[11px] font-semibold text-brown-400 mb-2">{period}</p>
+                                    <div className="flex flex-wrap gap-2">
+                                      {clusters.map((c, ci) => {
+                                        const sig = c.signal_strength ?? 0
+                                        const name = c.short_name ?? c.trend_name
+                                        const chipCls = sig >= 8 ? 'bg-orange-50 text-orange-600 border-orange-200' : sig >= 5 ? 'bg-green-50 text-green-700 border-green-200' : sig >= 3 ? 'bg-yellow-50 text-yellow-700 border-yellow-200' : 'bg-stone-50 text-stone-400 border-stone-200'
+                                        return (
+                                          <span key={ci} className={`inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs font-medium cursor-pointer hover:opacity-75 transition-opacity ${chipCls}`}
+                                            onClick={() => setHeatmapDrill({ cluster: c, period: r.period_start?.slice(0,10) ?? '' })}>
+                                            {name}
+                                            <span className="opacity-60 text-[10px]">{sig.toFixed(1)}</span>
+                                          </span>
+                                        )
+                                      })}
                                     </div>
-                                    <span className="text-[11px] font-semibold text-brown-500 bg-cream-100 rounded-full px-2 py-0.5 shrink-0 ml-2">{cnt}개월</span>
                                   </div>
-                                ))}
-                              </div>
+                                )
+                              })}
                             </div>
                           )}
-                        </div>
-                      )}
-                      {/* 월별 히트맵 */}
-                      {sorted.length >= 2 && (
-                        <div className="rounded-2xl bg-white p-6 shadow-sm">
-                          <p className="text-sm font-semibold text-brown-700 mb-0.5">키워드 히트맵 — 월별</p>
-                          <p className="text-xs text-brown-400 mb-4">가로축: 월 · 세로축: 트렌드 키워드 · 색상: 신호강도 · ↑ 급상승 감지</p>
-                          <KeywordHeatmap
-                            reports={sorted}
-                            mode="monthly"
-                            onCellClick={(cluster, period) => setHeatmapDrill({ cluster, period })}
-                          />
                         </div>
                       )}
                     </div>
@@ -1384,115 +1415,91 @@ export default function Home() {
                   const allNames = [...new Set(weeklySorted.flatMap(r => parseClustersLocal(r).map(c => c.short_name ?? c.trend_name)))].sort((a, b) => (nameCountW[b] ?? 0) - (nameCountW[a] ?? 0))
                   const latestClusters = parseClustersLocal(weeklySorted[weeklySorted.length - 1] ?? sorted[0])
 
+                  const weeklyNameFreq: Record<string, number> = {}
+                  weeklySorted.forEach(r => parseClustersLocal(r).forEach(c => {
+                    const n = c.short_name ?? c.trend_name
+                    weeklyNameFreq[n] = (weeklyNameFreq[n] ?? 0) + 1
+                  }))
+                  const weeklySustained = Object.entries(weeklyNameFreq).sort((a, b) => b[1] - a[1]).slice(0, 10)
+
                   return (
                     <>
-                    {/* 주별 TOP 트렌드 */}
+                    {/* 히트맵 + 주간 지속 트렌드 나란히 */}
+                    <div className="flex gap-4 items-start">
+                      {weeklySorted.length >= 2 && (
+                        <div className="rounded-2xl bg-white p-6 shadow-sm flex-1 min-w-0">
+                          <p className="text-sm font-semibold text-brown-700 mb-0.5">키워드 히트맵 — 주별</p>
+                          <p className="text-xs text-brown-400 mb-4">가로축: 주차 · 세로축: 트렌드 키워드 · 색상: 신호강도 · ↑ 급상승 감지</p>
+                          <KeywordHeatmap
+                            reports={weeklySorted}
+                            mode="weekly"
+                            onCellClick={(cluster, period) => setHeatmapDrill({ cluster, period })}
+                          />
+                        </div>
+                      )}
+                      {weeklySustained.length > 0 && (
+                        <div className="rounded-2xl bg-white p-6 shadow-sm w-64 shrink-0">
+                          <p className="text-sm font-semibold text-brown-700 mb-0.5">주간 지속 트렌드</p>
+                          <p className="text-xs text-brown-400 mb-4">반복 등장한 트렌드</p>
+                          <div className="divide-y divide-brown-50">
+                            {weeklySustained.map(([name, cnt], i) => (
+                              <div key={name} className="flex items-center justify-between py-2.5">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-[11px] text-brown-300 w-4 text-right shrink-0">{i + 1}</span>
+                                  <span className="text-xs font-medium text-brown-800">{name}</span>
+                                </div>
+                                <span className="text-[11px] font-semibold text-brown-500 bg-cream-100 rounded-full px-2 py-0.5 shrink-0 ml-2">{cnt}주</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* 주별 TOP 트렌드 (폴딩) */}
                     {weeklySorted.length > 0 && (
                       <div className="rounded-2xl bg-white p-6 shadow-sm">
-                        <p className="text-sm font-semibold text-brown-700 mb-0.5">주별 TOP 트렌드</p>
-                        <p className="text-xs text-brown-400 mb-3">각 주 신호강도 기준 상위 트렌드</p>
-                        <div className="flex flex-wrap gap-3 mb-4">
-                          <span className="flex items-center gap-1.5 text-[11px] text-brown-400"><span className="w-2.5 h-2.5 rounded-full bg-orange-400 inline-block"/>급상승</span>
-                          <span className="flex items-center gap-1.5 text-[11px] text-brown-400"><span className="w-2.5 h-2.5 rounded-full bg-green-400 inline-block"/>성장중</span>
-                          <span className="flex items-center gap-1.5 text-[11px] text-brown-400"><span className="w-2.5 h-2.5 rounded-full bg-yellow-300 inline-block"/>주목</span>
-                          <span className="flex items-center gap-1.5 text-[11px] text-brown-400"><span className="w-2.5 h-2.5 rounded-full bg-stone-300 inline-block"/>약세</span>
-                        </div>
-                        <div className="space-y-4">
-                          {[...weeklySorted].reverse().map(r => {
-                            const clusters = parseClustersLocal(r)
-                              .filter(c => (c.signal_strength ?? 0) > 0)
-                              .sort((a, b) => (b.signal_strength ?? 0) - (a.signal_strength ?? 0))
-                              .slice(0, 5)
-                            if (!clusters.length) return null
-                            const period = r.period_start ? `${r.period_start.slice(5,10)} ~ ${r.period_end?.slice(5,10) ?? ''}` : ''
-                            return (
-                              <div key={r.id}>
-                                <p className="text-[11px] font-semibold text-brown-400 mb-2">{period}</p>
-                                <div className="flex flex-wrap gap-2">
-                                  {clusters.map((c, ci) => {
-                                    const sig = c.signal_strength ?? 0
-                                    const name = c.short_name ?? c.trend_name
-                                    const chipCls = sig >= 8 ? 'bg-orange-50 text-orange-600 border-orange-200' : sig >= 5 ? 'bg-green-50 text-green-700 border-green-200' : sig >= 3 ? 'bg-yellow-50 text-yellow-700 border-yellow-200' : 'bg-stone-50 text-stone-400 border-stone-200'
-                                    return (
-                                      <span
-                                        key={ci}
-                                        className={`inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs font-medium cursor-pointer hover:opacity-75 transition-opacity ${chipCls}`}
-                                        onClick={() => setHeatmapDrill({ cluster: c, period: r.period_start?.slice(0,10) ?? '' })}
-                                      >
-                                        {name}
-                                        <span className="opacity-60 text-[10px]">{sig.toFixed(1)}</span>
-                                      </span>
-                                    )
-                                  })}
-                                </div>
-                              </div>
-                            )
-                          })}
-                        </div>
-                      </div>
-                    )}
-
-
-                    {/* 워드클라우드 + 주간 지속 트렌드 */}
-                    {(() => {
-                      const wordFreq: Record<string, number> = {}
-                      weeklySorted.forEach(r => {
-                        parseClustersLocal(r).forEach(c => {
-                          const name = c.short_name ?? c.trend_name
-                          name.split(/\s+/).filter(w => w.length > 1).forEach(w => { wordFreq[w] = (wordFreq[w] ?? 0) + 1 })
-                        })
-                      })
-                      const words = Object.entries(wordFreq).sort((a, b) => b[1] - a[1]).slice(0, 20)
-
-                      const weeklyNameFreq: Record<string, number> = {}
-                      weeklySorted.forEach(r => {
-                        parseClustersLocal(r).forEach(c => {
-                          const n = c.short_name ?? c.trend_name
-                          weeklyNameFreq[n] = (weeklyNameFreq[n] ?? 0) + 1
-                        })
-                      })
-                      const weeklySustained = Object.entries(weeklyNameFreq).sort((a, b) => b[1] - a[1]).slice(0, 10)
-
-                      if (!words.length && !weeklySustained.length) return null
-                      return (
-                        <div className="flex gap-4 items-start">
-                          {words.length > 0 && (
-                            <div className="rounded-2xl bg-white p-6 shadow-sm flex-1 min-w-0">
-                              <p className="text-sm font-semibold text-brown-700 mb-1">트렌드 키워드 빈도</p>
-                              <p className="text-xs text-brown-400 mb-4">클수록 더 많은 주에 등장한 키워드</p>
-                              <TrendWordCloud words={words.map(([text, value]) => ({ text, value }))} />
-                            </div>
-                          )}
-                          {weeklySustained.length > 0 && (
-                            <div className="rounded-2xl bg-white p-6 shadow-sm w-72 shrink-0">
-                              <p className="text-sm font-semibold text-brown-700 mb-0.5">주간 지속 트렌드</p>
-                              <p className="text-xs text-brown-400 mb-4">반복 등장한 트렌드</p>
-                              <div className="divide-y divide-brown-50">
-                                {weeklySustained.map(([name, cnt], i) => (
-                                  <div key={name} className="flex items-center justify-between py-2.5">
-                                    <div className="flex items-center gap-2">
-                                      <span className="text-[11px] text-brown-300 w-4 text-right shrink-0">{i + 1}</span>
-                                      <span className="text-xs font-medium text-brown-800">{name}</span>
-                                    </div>
-                                    <span className="text-[11px] font-semibold text-brown-500 bg-cream-100 rounded-full px-2 py-0.5 shrink-0 ml-2">{cnt}주</span>
+                        <button
+                          className="flex w-full items-center justify-between"
+                          onClick={() => setWeeklyTopExpanded(v => !v)}
+                        >
+                          <div>
+                            <p className="text-sm font-semibold text-brown-700">주별 TOP 트렌드</p>
+                            <p className="text-xs text-brown-400 mt-0.5">각 주 신호강도 기준 상위 트렌드</p>
+                          </div>
+                          <span className="text-brown-400 text-lg">{weeklyTopExpanded ? '▲' : '▼'}</span>
+                        </button>
+                        {weeklyTopExpanded && (
+                          <div className="mt-4 space-y-4">
+                            {[...weeklySorted].reverse().map(r => {
+                              const clusters = parseClustersLocal(r)
+                                .filter(c => (c.signal_strength ?? 0) > 0)
+                                .sort((a, b) => (b.signal_strength ?? 0) - (a.signal_strength ?? 0))
+                                .slice(0, 5)
+                              if (!clusters.length) return null
+                              const period = r.period_start ? `${r.period_start.slice(5,10)} ~ ${r.period_end?.slice(5,10) ?? ''}` : ''
+                              return (
+                                <div key={r.id}>
+                                  <p className="text-[11px] font-semibold text-brown-400 mb-2">{period}</p>
+                                  <div className="flex flex-wrap gap-2">
+                                    {clusters.map((c, ci) => {
+                                      const sig = c.signal_strength ?? 0
+                                      const name = c.short_name ?? c.trend_name
+                                      const chipCls = sig >= 8 ? 'bg-orange-50 text-orange-600 border-orange-200' : sig >= 5 ? 'bg-green-50 text-green-700 border-green-200' : sig >= 3 ? 'bg-yellow-50 text-yellow-700 border-yellow-200' : 'bg-stone-50 text-stone-400 border-stone-200'
+                                      return (
+                                        <span key={ci} className={`inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs font-medium cursor-pointer hover:opacity-75 transition-opacity ${chipCls}`}
+                                          onClick={() => setHeatmapDrill({ cluster: c, period: r.period_start?.slice(0,10) ?? '' })}>
+                                          {name}
+                                          <span className="opacity-60 text-[10px]">{sig.toFixed(1)}</span>
+                                        </span>
+                                      )
+                                    })}
                                   </div>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      )
-                    })()}
-                    {/* 주간 히트맵 */}
-                    {weeklySorted.length >= 2 && (
-                      <div className="rounded-2xl bg-white p-6 shadow-sm">
-                        <p className="text-sm font-semibold text-brown-700 mb-0.5">키워드 히트맵 — 주별</p>
-                        <p className="text-xs text-brown-400 mb-4">가로축: 주차 · 세로축: 트렌드 키워드 · 색상: 신호강도 · ↑ 급상승 감지</p>
-                        <KeywordHeatmap
-                          reports={weeklySorted}
-                          mode="weekly"
-                          onCellClick={(cluster, period) => setHeatmapDrill({ cluster, period })}
-                        />
+                                </div>
+                              )
+                            })}
+                          </div>
+                        )}
                       </div>
                     )}
                     </>
@@ -1775,6 +1782,46 @@ export default function Home() {
                   }`}
                 >
                   {s === 'all' ? 'All' : s === 'instagram' ? 'Instagram' : 'Lookbook'}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* 필터/정렬 */}
+          <div className="flex flex-wrap gap-3 items-center">
+            <select
+              value={dataAccount}
+              onChange={e => { setDataAccount(e.target.value); setDataOffset(0); setHasMore(true) }}
+              className="rounded-lg border border-brown-200 bg-white px-3 py-2 text-sm text-brown-700 focus:outline-none focus:ring-2 focus:ring-brown-300"
+            >
+              <option value="">전체 계정</option>
+              {dataAccounts.map(a => <option key={a} value={a}>{a}</option>)}
+            </select>
+
+            <div className="flex items-center gap-1.5 text-sm text-brown-400">
+              <input
+                type="date"
+                value={dataDateFrom}
+                onChange={e => { setDataDateFrom(e.target.value); setDataOffset(0) }}
+                className="rounded-lg border border-brown-200 bg-white px-2 py-2 text-xs text-brown-700 focus:outline-none focus:ring-2 focus:ring-brown-300"
+              />
+              <span>~</span>
+              <input
+                type="date"
+                value={dataDateTo}
+                onChange={e => { setDataDateTo(e.target.value); setDataOffset(0) }}
+                className="rounded-lg border border-brown-200 bg-white px-2 py-2 text-xs text-brown-700 focus:outline-none focus:ring-2 focus:ring-brown-300"
+              />
+            </div>
+
+            <div className="flex gap-1 rounded-xl bg-brown-100 p-1 ml-auto">
+              {([['collected', '수집순'], ['posted', '날짜순'], ['likes', '좋아요순']] as const).map(([val, label]) => (
+                <button
+                  key={val}
+                  onClick={() => { setDataSort(val); setDataOffset(0) }}
+                  className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${dataSort === val ? 'bg-white text-brown-700 shadow-sm' : 'text-brown-400 hover:text-brown-600'}`}
+                >
+                  {label}
                 </button>
               ))}
             </div>
