@@ -1303,8 +1303,13 @@ export default function Home() {
                                       const name = c.short_name ?? c.trend_name
                                       const chipCls = sig >= 8 ? 'bg-orange-50 text-orange-600 border-orange-200' : sig >= 5 ? 'bg-green-50 text-green-700 border-green-200' : sig >= 3 ? 'bg-yellow-50 text-yellow-700 border-yellow-200' : 'bg-stone-50 text-stone-400 border-stone-200'
                                       return (
-                                        <span key={ci} className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium ${chipCls}`}>
+                                        <span
+                                          key={ci}
+                                          className={`inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs font-medium cursor-pointer hover:opacity-75 transition-opacity ${chipCls}`}
+                                          onClick={() => setHeatmapDrill({ cluster: c, period: r.period_start?.slice(0,10) ?? '' })}
+                                        >
                                           {name}
+                                          <span className="opacity-60 text-[10px]">{(c.signal_strength ?? 0).toFixed(1)}</span>
                                         </span>
                                       )
                                     })}
