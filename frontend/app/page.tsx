@@ -169,6 +169,8 @@ export default function Home() {
   const [dataSource, setDataSource] = useState<'all' | 'instagram' | 'lookbook'>('all')
   const [dataOffset, setDataOffset] = useState(0)
   const [hasMore, setHasMore] = useState(true)
+  const [dataSort, setDataSort] = useState<'time' | 'influencer'>('time')
+  const [dataCategory, setDataCategory] = useState<string>('all')
   const DATA_LIMIT = 40
 
   // 관리 탭
@@ -204,11 +206,13 @@ export default function Home() {
     } catch {} finally { setReportsLoading(false) }
   }, [])
 
-  const fetchAllPosts = useCallback(async (source: string, offset: number, append = false) => {
+  const fetchAllPosts = useCallback(async (source: string, offset: number, append = false, sort = 'time', category = 'all') => {
     setAllPostsLoading(true)
     try {
       const params = new URLSearchParams({ limit: String(DATA_LIMIT), offset: String(offset) })
       if (source !== 'all') params.set('source', source)
+      if (sort !== 'time') params.set('sort', sort)
+      if (category !== 'all') params.set('category', category)
       const res = await fetch(`/api/posts?${params}`)
       if (res.ok) {
         const data = await res.json()
@@ -227,8 +231,8 @@ export default function Home() {
     }
   }, [tab])
   useEffect(() => {
-    if (tab === 'data') { setDataOffset(0); setHasMore(true); fetchAllPosts(dataSource, 0) }
-  }, [tab, dataSource, fetchAllPosts])
+    if (tab === 'data') { setDataOffset(0); setHasMore(true); fetchAllPosts(dataSource, 0, false, dataSort, dataCategory) }
+  }, [tab, dataSource, dataSort, dataCategory, fetchAllPosts])
 
   useEffect(() => {
     if (tab !== 'manage') return
@@ -328,12 +332,28 @@ export default function Home() {
   function handleLoadMore() {
     const next = dataOffset + DATA_LIMIT
     setDataOffset(next)
-    fetchAllPosts(dataSource, next, true)
+    fetchAllPosts(dataSource, next, true, dataSort, dataCategory)
   }
 
   function formatDate(iso: string) {
     try { return new Date(iso).toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' }) }
     catch { return iso }
+  }
+
+  const handleReportImageClick = async (id: number | undefined, url: string, fallbackCaption?: string) => {
+    if (id) {
+      try {
+        const res = await fetch(`/api/posts/by-ids?ids=${id}`)
+        if (res.ok) {
+          const rows = await res.json()
+          if (rows && rows.length > 0 && rows[0].post_url) {
+            window.open(rows[0].post_url, '_blank')
+            return
+          }
+        }
+      } catch (e) {}
+    }
+    setLightbox({ url, caption: fallbackCaption })
   }
 
   return (
@@ -684,7 +704,7 @@ export default function Home() {
                   {heatmapDrill.cluster.representative_images?.length > 0 && (
                     <div className="flex gap-1.5">
                       {heatmapDrill.cluster.representative_images.slice(0, 3).map((url, j) => (
-                        <img key={j} src={url} className="h-32 w-0 flex-1 rounded-lg object-cover" onError={e => (e.currentTarget.style.display='none')} />
+                        <img key={j} src={url} className="h-32 w-0 flex-1 rounded-lg object-cover cursor-pointer hover:opacity-80 transition-opacity" onClick={() => handleReportImageClick(heatmapDrill.cluster.representative_ids?.[j], url, heatmapDrill.cluster.description)} onError={e => (e.currentTarget.style.display='none')} />
                       ))}
                     </div>
                   )}
@@ -978,7 +998,7 @@ export default function Home() {
                                       key={j} src={url}
                                       className="h-28 w-0 flex-1 rounded-lg object-cover cursor-pointer hover:opacity-80 transition-opacity"
                                       title={c.description || c.trend_name}
-                                      onClick={() => setLightbox({ url, caption: c.description })}
+                                    onClick={() => handleReportImageClick(c.representative_ids?.[j], url, c.description)}
                                       onError={e => (e.currentTarget.style.display='none')}
                                     />
                                   ))}
@@ -1729,6 +1749,7 @@ export default function Home() {
               </h2>
               <p className="mt-2 text-sm text-brown-400">수집된 전체 패션 이미지</p>
             </div>
+          <div className="flex flex-col items-end gap-3">
             {/* 소스 필터 */}
             <div className="flex gap-1 rounded-xl bg-brown-100 p-1">
               {(['all', 'instagram', 'lookbook'] as const).map((s) => (
@@ -1745,6 +1766,38 @@ export default function Home() {
                 </button>
               ))}
             </div>
+            <div className="flex items-center gap-2">
+              {/* 카테고리 필터 */}
+              <select
+                value={dataCategory}
+                onChange={e => setDataCategory(e.target.value)}
+                className="rounded-lg border border-brown-200 bg-white px-3 py-1.5 text-sm text-brown-700 outline-none focus:border-brown-400"
+              >
+                <option value="all">모든 카테고리</option>
+                <option value="outer">아우터</option>
+                <option value="top">상의</option>
+                <option value="bottom">하의</option>
+                <option value="dress">원피스</option>
+                <option value="acc">액세서리</option>
+              </select>
+              {/* 정렬 필터 */}
+              <div className="flex gap-1 rounded-xl bg-brown-100 p-1">
+                {(['time', 'influencer'] as const).map((s) => (
+                  <button
+                    key={s}
+                    onClick={() => setDataSort(s)}
+                    className={`rounded-lg px-4 py-1.5 text-sm font-medium transition ${
+                      dataSort === s
+                        ? 'bg-white text-brown-700 shadow-sm'
+                        : 'text-brown-400 hover:text-brown-600'
+                    }`}
+                  >
+                    {s === 'time' ? '최신순' : '인플루언서순'}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
           </div>
 
           {allPostsLoading && allPosts.length === 0 ? (
