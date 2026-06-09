@@ -158,8 +158,6 @@ export default function Home() {
   const [monthlyTopExpanded, setMonthlyTopExpanded] = useState(false)
   const [lightbox, setLightbox] = useState<{ url: string; caption?: string } | null>(null)
   const [heatmapDrill, setHeatmapDrill] = useState<{ cluster: TrendCluster; period: string } | null>(null)
-  const [weeklyTopExpanded, setWeeklyTopExpanded] = useState(false)
-  const [monthlyTopExpanded, setMonthlyTopExpanded] = useState(false)
 
   // 통계
   const [stats, setStats] = useState<Stats | null>(null)
