@@ -2,6 +2,7 @@ import os
 import base64
 import anthropic
 from fastapi import APIRouter, Query, UploadFile, File
+from typing import List
 
 from db.database import search_fashion_posts, get_fashion_accounts
 
@@ -77,6 +78,56 @@ async def search_by_image(file: UploadFile = File(...)):
 
     return {
         "caption": caption,
+        "total": len(results),
+        "results": [
+            {
+                "id": r["id"],
+                "image_url": r["image_url"],
+                "account_name": r["account_name"],
+                "source": r["source"],
+                "posted_at": str(r["posted_at"]) if r["posted_at"] else None,
+                "caption_ai": r["caption_ai"],
+                "similarity": round(float(r["similarity"]), 4),
+            }
+            for r in results
+        ],
+    }
+
+
+@router.post("/images")
+async def search_by_multiple_images(files: List[UploadFile] = File(...)):
+    """여러 이미지의 CLIP 임베딩 평균으로 유사 이미지 검색."""
+    from PIL import Image
+    import io
+    import torch
+    from pipeline.embedder import get_model
+
+    model, processor = get_model()
+    embeddings = []
+
+    for file in files:
+        content = await file.read()
+        try:
+            img = Image.open(io.BytesIO(content)).convert("RGB")
+            inputs = processor(images=img, return_tensors="pt")
+            with torch.no_grad():
+                emb = model.get_image_features(**inputs)
+                emb = emb / emb.norm(dim=-1, keepdim=True)
+            embeddings.append(emb[0])
+        except Exception:
+            continue
+
+    if not embeddings:
+        return {"total": 0, "results": []}
+
+    avg_emb = torch.stack(embeddings).mean(dim=0)
+    avg_emb = avg_emb / avg_emb.norm()
+    query_embedding = avg_emb.tolist()
+
+    results = search_fashion_posts(query_embedding, days=0, limit=50)
+
+    return {
+        "image_count": len(embeddings),
         "total": len(results),
         "results": [
             {

@@ -238,6 +238,25 @@ def get_uncaptioned_posts(limit: int = 100, per_account: int = 50, since: str = 
             cur.execute(query, tuple(params))
             return [dict(row) for row in cur.fetchall()]
 
+def get_all_posts_for_recaption(limit: int = 1000, per_account: int = 500) -> list[dict]:
+    """캡션 여부 무관 전체 포스팅 조회 (재캡셔닝용)."""
+    query = """
+        SELECT id, image_url, account_name, source
+        FROM (
+            SELECT id, image_url, account_name, source,
+                   ROW_NUMBER() OVER (PARTITION BY account_name ORDER BY id) AS rn
+            FROM fashion_posts
+            WHERE image_url IS NOT NULL
+        ) sub
+        WHERE rn <= %s
+        LIMIT %s
+    """
+    with _get_connection() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(query, (per_account, limit))
+            return [dict(row) for row in cur.fetchall()]
+
+
 def delete_post(post_id: int) -> None:
     with _get_connection() as conn:
         with conn.cursor() as cur:
@@ -271,13 +290,30 @@ def save_embedding(post_id: int, embedding: list[float]) -> None:
         conn.commit()
 
 
-def get_fashion_posts_all(limit: int = 50, offset: int = 0, source: str = None) -> list[dict]:
-    """전체 패션 포스팅 조회. 최신 수집순 정렬."""
+def get_fashion_posts_all(
+    limit: int = 50, offset: int = 0, source: str = None,
+    account_name: str = None, sort: str = "collected",
+    date_from: str = None, date_to: str = None,
+) -> list[dict]:
+    """전체 패션 포스팅 조회."""
     where = "WHERE TRUE"
     params: list[Any] = []
     if source:
         where += " AND source = %s"
         params.append(source)
+    if account_name:
+        where += " AND account_name = %s"
+        params.append(account_name)
+    if date_from:
+        where += " AND posted_at >= %s"
+        params.append(date_from)
+    if date_to:
+        where += " AND posted_at <= %s"
+        params.append(date_to)
+    order = {
+        "likes": "likes DESC NULLS LAST, collected_at DESC",
+        "posted": "posted_at DESC NULLS LAST",
+    }.get(sort, "collected_at DESC NULLS LAST")
     with _get_connection() as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(
@@ -286,7 +322,7 @@ def get_fashion_posts_all(limit: int = 50, offset: int = 0, source: str = None) 
                        caption_ai, caption_meta, collected_at, price, material_info, likes, followers
                 FROM fashion_posts
                 {where}
-                ORDER BY collected_at DESC NULLS LAST
+                ORDER BY {order}
                 LIMIT %s OFFSET %s
                 """,
                 params + [limit, offset],
@@ -313,6 +349,24 @@ def get_fashion_stats() -> dict:
     }
 
 
+COLOR_KEYWORDS = {
+    "블랙", "화이트", "아이보리", "베이지", "카키", "브라운", "그레이", "네이비",
+    "블루", "레드", "핑크", "옐로우", "그린", "퍼플", "오렌지", "민트", "라벤더",
+    "크림", "샴페인", "머스타드", "버건디", "코랄", "스카이블루", "올리브",
+    "black", "white", "ivory", "beige", "khaki", "brown", "gray", "grey", "navy",
+    "blue", "red", "pink", "yellow", "green", "purple", "orange", "mint",
+}
+
+def _extract_color_keywords(keywords: list[str]) -> list[str]:
+    result = []
+    for kw in (keywords or []):
+        lower = kw.lower()
+        for color in COLOR_KEYWORDS:
+            if color in lower:
+                result.append(color)
+    return list(set(result))
+
+
 def search_fashion_posts(
     query_embedding: list[float],
     days: int = 60,
@@ -322,7 +376,9 @@ def search_fashion_posts(
     keywords: list[str] | None = None,
 ) -> list[dict]:
     """RRF 기반 하이브리드(벡터 + 키워드) 패션 이미지 검색."""
-    
+
+    color_keys = _extract_color_keywords(keywords)
+
     RRF_K = 60
     CANDIDATE_SIZE = limit * 5  # 후보군은 넉넉하게
     
@@ -389,14 +445,21 @@ def search_fashion_posts(
         if doc_id not in all_docs:
             all_docs[doc_id] = doc
 
-    # 4. 최종 정렬 및 반환
+    # 4. 색상 가중치 부스트
+    if color_keys:
+        for doc_id, doc in all_docs.items():
+            combined = ((doc.get("caption_ai") or "") + " " + (doc.get("caption_meta") or "")).lower()
+            if any(c in combined for c in color_keys):
+                rrf_scores[doc_id] = rrf_scores.get(doc_id, 0) * 1.2
+
+    # 5. 최종 정렬 및 반환
     sorted_ids = sorted(rrf_scores, key=lambda x: rrf_scores[x], reverse=True)[:limit]
     results = []
     for doc_id in sorted_ids:
         doc = all_docs[doc_id]
         doc["similarity"] = round(rrf_scores[doc_id], 6)
         results.append(doc)
-    
+
     return results
 
 

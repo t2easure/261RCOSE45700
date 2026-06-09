@@ -13,7 +13,7 @@ import sys
 # 환경 변수 로드
 load_dotenv(Path(__file__).parent.parent / ".env")
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from db.database import get_uncaptioned_posts, save_caption, delete_post
+from db.database import get_uncaptioned_posts, get_all_posts_for_recaption, save_caption, delete_post
 
 # 프로젝트 루트(backend/data) 절대 경로 설정
 BASE_DIR = Path(__file__).parent.parent / "data"
@@ -156,15 +156,18 @@ async def process_post(ant_client, http_client, post, semaphore, retries=3):
                 tqdm.write(f"❌ ID #{post['id']} 실패: {e}")
                 return False
 
-async def run_captioning(batch_size: int = 200, per_account: int = 50, since: str = None, empty_only: bool = False):
+async def run_captioning(batch_size: int = 200, per_account: int = 50, since: str = None, empty_only: bool = False, recaption_all: bool = False):
     ant_client = anthropic.AsyncAnthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
-    posts = get_uncaptioned_posts(limit=batch_size, per_account=per_account, since=since, empty_only=empty_only)
-    
+    if recaption_all:
+        posts = get_all_posts_for_recaption(limit=batch_size, per_account=per_account)
+    else:
+        posts = get_uncaptioned_posts(limit=batch_size, per_account=per_account, since=since, empty_only=empty_only)
+
     if not posts:
         print("✨ 분석할 이미지가 없습니다.")
         return
 
-    semaphore = asyncio.Semaphore(20)
+    semaphore = asyncio.Semaphore(5)
     
     async with httpx.AsyncClient() as http_client:
         tasks = [process_post(ant_client, http_client, post, semaphore) for post in posts]
@@ -175,4 +178,16 @@ async def run_captioning(batch_size: int = 200, per_account: int = 50, since: st
     print(f"\n✅ 완료: {sum(results)}/{len(posts)}개 성공!")
 
 if __name__ == "__main__":
-    asyncio.run(run_captioning())
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--all", action="store_true", dest="recaption_all", help="캡션 여부 무관 전체 재캡셔닝")
+    parser.add_argument("--batch-size", type=int, default=200)
+    parser.add_argument("--per-account", type=int, default=50)
+    parser.add_argument("--since", type=str, default=None)
+    args = parser.parse_args()
+    asyncio.run(run_captioning(
+        batch_size=args.batch_size,
+        per_account=args.per_account,
+        since=args.since,
+        recaption_all=args.recaption_all,
+    ))
