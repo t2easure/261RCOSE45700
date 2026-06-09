@@ -297,21 +297,33 @@ export default function Home() {
   }, [searchSources, searchAccounts, searchDays])
 
 
-  async function handleImageSearch(file: File) {
+  async function handleImageSearch(files: File[]) {
     setImageSearchLoading(true)
-    setImagePreview(URL.createObjectURL(file))
+    setImagePreview(URL.createObjectURL(files[0]))
     setSearchQuery('')
     setTab('search')
     try {
       const formData = new FormData()
-      formData.append('file', file)
-      const res = await fetch('/api/search/image', { method: 'POST', body: formData })
-      if (res.ok) {
-        const data = await res.json()
-        setImageCaption(data.caption ?? null)
-        const rawImg = data.results ?? []
-        const maxSimImg = Math.max(...rawImg.map((r: SearchResult) => r.similarity), 1e-9)
-        setSearchResults(rawImg.map((r: SearchResult) => ({ ...r, similarity: r.similarity / maxSimImg })))
+      if (files.length === 1) {
+        formData.append('file', files[0])
+        const res = await fetch('/api/search/image', { method: 'POST', body: formData })
+        if (res.ok) {
+          const data = await res.json()
+          setImageCaption(data.caption ?? null)
+          const rawImg = data.results ?? []
+          const maxSimImg = Math.max(...rawImg.map((r: SearchResult) => r.similarity), 1e-9)
+          setSearchResults(rawImg.map((r: SearchResult) => ({ ...r, similarity: r.similarity / maxSimImg })))
+        }
+      } else {
+        files.forEach(f => formData.append('files', f))
+        const res = await fetch('/api/search/images', { method: 'POST', body: formData })
+        if (res.ok) {
+          const data = await res.json()
+          setImageCaption(`이미지 ${data.image_count}장 기반 검색`)
+          const rawImg = data.results ?? []
+          const maxSimImg = Math.max(...rawImg.map((r: SearchResult) => r.similarity), 1e-9)
+          setSearchResults(rawImg.map((r: SearchResult) => ({ ...r, similarity: r.similarity / maxSimImg })))
+        }
       }
     } catch {} finally { setImageSearchLoading(false) }
   }
@@ -486,10 +498,11 @@ export default function Home() {
               <input
                 type="file"
                 accept="image/*"
+                multiple
                 className="hidden"
-                onChange={e => { if (e.target.files?.[0]) handleImageSearch(e.target.files[0]) }}
+                onChange={e => { if (e.target.files && e.target.files.length > 0) handleImageSearch(Array.from(e.target.files)) }}
               />
-              {imageSearchLoading ? '이미지 분석 중...' : '📷 이미지 업로드'}
+              {imageSearchLoading ? '이미지 분석 중...' : '📷 이미지 업로드 (여러 장 가능)'}
             </label>
           </div>
 
