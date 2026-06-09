@@ -162,7 +162,7 @@ async def run_captioning(batch_size: int = 200, per_account: int = 50, since: st
         posts = get_all_posts_for_recaption(limit=batch_size, per_account=per_account)
     else:
         posts = get_uncaptioned_posts(limit=batch_size, per_account=per_account, since=since, empty_only=empty_only)
-    
+
     if not posts:
         print("✨ 분석할 이미지가 없습니다.")
         return
@@ -180,9 +180,14 @@ async def run_captioning(batch_size: int = 200, per_account: int = 50, since: st
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
+    parser.add_argument("--all", action="store_true", dest="recaption_all", help="캡션 여부 무관 전체 재캡셔닝")
     parser.add_argument("--batch-size", type=int, default=200)
     parser.add_argument("--per-account", type=int, default=50)
     parser.add_argument("--since", type=str, default=None)
-    parser.add_argument("--all", action="store_true", help="caption_ai 있는 것도 포함해 전체 재캡셔닝")
     args = parser.parse_args()
-    asyncio.run(run_captioning(batch_size=args.batch_size, per_account=args.per_account, since=args.since, empty_only=not args.all, recaption_all=args.all))
+    asyncio.run(run_captioning(
+        batch_size=args.batch_size,
+        per_account=args.per_account,
+        since=args.since,
+        recaption_all=args.recaption_all,
+    ))
