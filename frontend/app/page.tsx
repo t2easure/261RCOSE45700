@@ -1892,47 +1892,6 @@ export default function Home() {
                 </button>
               ))}
             </div>
-            <div className="flex items-center gap-2 flex-wrap justify-end">
-              {/* 계정 필터 */}
-              <select
-                value={dataAccount}
-                onChange={e => setDataAccount(e.target.value)}
-                className="rounded-lg border border-brown-200 bg-white px-3 py-1.5 text-sm text-brown-700 outline-none focus:border-brown-400"
-              >
-                <option value="">전체 계정</option>
-                {dataAccounts.map(a => <option key={a} value={a}>{a}</option>)}
-              </select>
-              {/* 날짜 필터 */}
-              <input
-                type="date"
-                value={dataDateFrom}
-                onChange={e => setDataDateFrom(e.target.value)}
-                className="rounded-lg border border-brown-200 bg-white px-3 py-1.5 text-sm text-brown-700 outline-none focus:border-brown-400"
-              />
-              <span className="text-xs text-brown-300">~</span>
-              <input
-                type="date"
-                value={dataDateTo}
-                onChange={e => setDataDateTo(e.target.value)}
-                className="rounded-lg border border-brown-200 bg-white px-3 py-1.5 text-sm text-brown-700 outline-none focus:border-brown-400"
-              />
-              {/* 정렬 */}
-              <div className="flex gap-1 rounded-xl bg-brown-100 p-1">
-                {([['collected', '수집순'], ['posted', '날짜순'], ['likes', '좋아요순']] as const).map(([s, label]) => (
-                  <button
-                    key={s}
-                    onClick={() => setDataSort(s)}
-                    className={`rounded-lg px-3 py-1.5 text-sm font-medium transition ${
-                      dataSort === s
-                        ? 'bg-white text-brown-700 shadow-sm'
-                        : 'text-brown-400 hover:text-brown-600'
-                    }`}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-            </div>
           </div>
           </div>
 
