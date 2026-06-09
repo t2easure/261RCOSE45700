@@ -311,9 +311,10 @@ def get_fashion_posts_all(
         where += " AND posted_at <= %s"
         params.append(date_to)
     order = {
-        "likes": "likes DESC NULLS LAST, collected_at DESC",
-        "posted": "posted_at DESC NULLS LAST",
-    }.get(sort, "collected_at DESC NULLS LAST")
+        "likes": "likes DESC NULLS LAST, posted_at DESC NULLS LAST",
+        "oldest": "posted_at ASC NULLS LAST",
+        "latest": "posted_at DESC NULLS LAST",
+    }.get(sort, "posted_at DESC NULLS LAST")
     with _get_connection() as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(

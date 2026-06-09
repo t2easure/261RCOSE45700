@@ -171,7 +171,7 @@ export default function Home() {
   const [dataSource, setDataSource] = useState<'all' | 'instagram' | 'lookbook'>('all')
   const [dataOffset, setDataOffset] = useState(0)
   const [hasMore, setHasMore] = useState(true)
-  const [dataSort, setDataSort] = useState<'collected' | 'likes' | 'posted'>('collected')
+  const [dataSort, setDataSort] = useState<'latest' | 'oldest' | 'likes'>('latest')
   const [dataAccount, setDataAccount] = useState<string>('')
   const [dataDateFrom, setDataDateFrom] = useState<string>('')
   const [dataDateTo, setDataDateTo] = useState<string>('')
@@ -1836,7 +1836,7 @@ export default function Home() {
             </div>
 
             <div className="flex gap-1 rounded-xl bg-brown-100 p-1 ml-auto">
-              {([['collected', '수집순'], ['posted', '날짜순'], ['likes', '좋아요순']] as const).map(([val, label]) => (
+              {([['latest', '최신순'], ['oldest', '오래된순'], ['likes', '좋아요순']] as const).map(([val, label]) => (
                 <button
                   key={val}
                   onClick={() => { setDataSort(val); setDataOffset(0) }}
