@@ -28,7 +28,6 @@ export default function ImageCard({
   source,
   postedAt,
   captionAi,
-  similarity,
   postUrl,
   price,
   materialInfo,
@@ -61,11 +60,6 @@ export default function ImageCard({
         <span className="absolute left-2 top-2 rounded-full bg-white/80 px-2.5 py-1 text-[10px] font-medium text-brown-600 backdrop-blur-sm">
           {SOURCE_LABELS[source] ?? source}
         </span>
-        {similarity !== undefined && (
-          <span className="absolute right-2 top-2 rounded-full bg-brown-700/70 px-2 py-0.5 text-[10px] font-medium text-white backdrop-blur-sm">
-            {Math.round(similarity * 100)}%
-          </span>
-        )}
       </div>
 
       <div className="space-y-1 p-3">

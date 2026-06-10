@@ -632,7 +632,7 @@ export default function Home() {
               ) : (
                 <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
                   {searchResults.map((r) => (
-                    <ImageCard key={r.id} imageUrl={r.image_url} accountName={r.account_name} source={r.source} postedAt={r.posted_at} captionAi={r.caption_ai} similarity={r.similarity} />
+                    <ImageCard key={r.id} imageUrl={r.image_url} accountName={r.account_name} source={r.source} postedAt={r.posted_at} captionAi={r.caption_ai} similarity={r.similarity} postUrl={r.post_url} />
                   ))}
                 </div>
               )}
@@ -669,6 +669,7 @@ export default function Home() {
                       postedAt={r.posted_at}
                       captionAi={r.caption_ai}
                       similarity={r.similarity}
+                      postUrl={r.post_url}
                     />
                   ))}
                 </div>
@@ -2183,6 +2184,7 @@ export default function Home() {
 
 function TrendList({ styleTrends }: { styleTrends: string | StyleTrend[] }) {
   const [images, setImages] = useState<Record<number, string>>({})
+  const [postUrls, setPostUrls] = useState<Record<number, string | null>>({})
   const trends: StyleTrend[] = typeof styleTrends === 'string' ? JSON.parse(styleTrends) : styleTrends
 
   useEffect(() => {
@@ -2190,10 +2192,12 @@ function TrendList({ styleTrends }: { styleTrends: string | StyleTrend[] }) {
     if (allIds.length === 0) return
     fetch(`/api/posts/by-ids?ids=${allIds.join(',')}`)
       .then(r => r.json())
-      .then((rows: { id: number; image_url: string }[]) => {
+      .then((rows: { id: number; image_url: string; post_url?: string | null }[]) => {
         const map: Record<number, string> = {}
-        rows.forEach(r => { map[r.id] = r.image_url })
+        const urlMap: Record<number, string | null> = {}
+        rows.forEach(r => { map[r.id] = r.image_url; urlMap[r.id] = r.post_url ?? null })
         setImages(map)
+        setPostUrls(urlMap)
       })
       .catch(() => {})
   }, [])
@@ -2208,7 +2212,13 @@ function TrendList({ styleTrends }: { styleTrends: string | StyleTrend[] }) {
           {trend.representative_ids?.length > 0 && (
             <div className="flex gap-2 flex-wrap">
               {trend.representative_ids.map(id => images[id] ? (
-                <img key={id} src={images[id]} className="h-36 w-28 object-cover rounded-lg" />
+                postUrls[id] ? (
+                  <a key={id} href={postUrls[id]!} target="_blank" rel="noreferrer noopener">
+                    <img src={images[id]} className="h-36 w-28 object-cover rounded-lg cursor-pointer hover:opacity-80 transition-opacity" />
+                  </a>
+                ) : (
+                  <img key={id} src={images[id]} className="h-36 w-28 object-cover rounded-lg" />
+                )
               ) : null)}
             </div>
           )}

@@ -389,12 +389,27 @@ def _extract_color_keywords(keywords: list[str]) -> list[str]:
     return list(set(result))
 
 
+# Instagram이 차단/오류 시 내려주는 더미 이미지(토마토/고추 정물 사진)의 콘텐츠 해시.
+# 여러 게시물에 동일 바이트의 이미지가 재다운로드되어 덮어써진 경우를 걸러낸다.
+_BAD_IMAGE_SIZES = {1678201, 59517}
+_BAD_IMAGE_HASHES = {"1702e3b9b2ff7bbba99dbda15cf87c5e", "2bdd2f0e67445de888f1cd49b9777c5b"}
+
+
 def _image_file_ok(image_url: str) -> bool:
-    """로컬에 저장된 이미지 파일이 정상(10KB 초과)인지 확인. 외부 URL이면 그대로 통과."""
+    """로컬에 저장된 이미지 파일이 정상(10KB 초과, 알려진 오류 이미지 아님)인지 확인. 외부 URL이면 그대로 통과."""
     if not image_url or not image_url.startswith("/images/"):
         return True
     path = Path(DATA_DIR) / image_url.lstrip("/")
-    return path.exists() and path.stat().st_size > 10000
+    if not path.exists():
+        return False
+    size = path.stat().st_size
+    if size <= 10000:
+        return False
+    if size in _BAD_IMAGE_SIZES:
+        import hashlib
+        if hashlib.md5(path.read_bytes()).hexdigest() in _BAD_IMAGE_HASHES:
+            return False
+    return True
 
 
 def search_fashion_posts(
@@ -491,7 +506,10 @@ def search_fashion_posts(
             break
         doc = all_docs[doc_id]
         image_url = doc["image_url"]
+        caption = doc.get("caption_ai") or ""
         if image_url in seen_images or not _image_file_ok(image_url):
+            continue
+        if "패션 이미지가 아닙니다" in caption or "패션 사진이 아닙니다" in caption:
             continue
         seen_images.add(image_url)
         doc["similarity"] = round(rrf_scores[doc_id], 6)

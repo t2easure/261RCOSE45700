@@ -128,11 +128,11 @@ def posts_by_ids(ids: str):
     with _get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                f"SELECT id, image_url, account_name FROM fashion_posts WHERE id = ANY(%s)",
+                f"SELECT id, image_url, account_name, post_url FROM fashion_posts WHERE id = ANY(%s)",
                 (id_list,)
             )
             rows = cur.fetchall()
-    return [{"id": r[0], "image_url": r[1], "account_name": r[2]} for r in rows]
+    return [{"id": r[0], "image_url": r[1], "account_name": r[2], "post_url": r[3]} for r in rows]
 
 
 @app.get("/posts/accounts")

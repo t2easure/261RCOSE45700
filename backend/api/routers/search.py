@@ -107,6 +107,7 @@ async def search_by_image(file: UploadFile = File(...), q: str = Form(None)):
             {
                 "id": r["id"],
                 "image_url": r["image_url"],
+                "post_url": r.get("post_url"),
                 "account_name": r["account_name"],
                 "source": r["source"],
                 "posted_at": str(r["posted_at"]) if r["posted_at"] else None,
@@ -170,6 +171,7 @@ async def search_by_multiple_images(files: List[UploadFile] = File(...), q: str 
             {
                 "id": r["id"],
                 "image_url": r["image_url"],
+                "post_url": r.get("post_url"),
                 "account_name": r["account_name"],
                 "source": r["source"],
                 "posted_at": str(r["posted_at"]) if r["posted_at"] else None,
@@ -214,6 +216,7 @@ def search(
             {
                 "id": r["id"],
                 "image_url": r["image_url"],
+                "post_url": r.get("post_url"),
                 "account_name": r["account_name"],
                 "source": r["source"],
                 "posted_at": str(r["posted_at"]) if r["posted_at"] else None,
