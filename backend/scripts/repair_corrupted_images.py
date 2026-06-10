@@ -240,7 +240,7 @@ async def main():
             page = await context.new_page()
             await Stealth().apply_stealth_async(page)
             try:
-                img_src = await fetch_real_image_src(page, base_url, slide_idx)
+                img_src = await asyncio.wait_for(fetch_real_image_src(page, base_url, slide_idx), timeout=60)
                 if not img_src:
                     print(f"  [실패] id={t['id']} 이미지 추출 실패", flush=True)
                     failed += 1
@@ -259,11 +259,17 @@ async def main():
                 update_post_image(t["id"], new_image_url)
                 print(f"  [복구] id={t['id']} -> {new_image_url}", flush=True)
                 fixed += 1
+            except asyncio.TimeoutError:
+                print(f"  [실패] id={t['id']} 타임아웃(60초) - 건너뜀", flush=True)
+                failed += 1
             except Exception as e:
                 print(f"  [에러] id={t['id']}: {e}", flush=True)
                 failed += 1
             finally:
-                await page.close()
+                try:
+                    await asyncio.wait_for(page.close(), timeout=10)
+                except Exception:
+                    pass
                 await asyncio.sleep(2)
 
         await browser.close()
