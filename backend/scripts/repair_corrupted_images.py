@@ -123,20 +123,25 @@ def find_corrupted_groups() -> list[dict]:
 
 
 async def fetch_real_image_src(page, base_post_url: str, slide_idx: int) -> str | None:
+    print(f"    [단계] goto 시작: {base_post_url}", flush=True)
     try:
         await page.goto(base_post_url, wait_until="domcontentloaded", timeout=25000)
-    except Exception:
+    except Exception as e:
+        print(f"    [단계] goto 1차 실패: {e}", flush=True)
         await asyncio.sleep(2)
         try:
             await page.goto(base_post_url, wait_until="domcontentloaded", timeout=25000)
-        except Exception:
+        except Exception as e2:
+            print(f"    [단계] goto 2차 실패: {e2}", flush=True)
             return None
+    print("    [단계] goto 완료", flush=True)
 
     try:
         await page.wait_for_selector('img', timeout=5000)
     except Exception:
         pass
     await asyncio.sleep(1.5)
+    print("    [단계] img 셀렉터 대기 완료", flush=True)
 
     for _ in range(slide_idx):
         next_btn = page.locator('button[aria-label="다음"], button[aria-label="Next"]').first
@@ -148,29 +153,35 @@ async def fetch_real_image_src(page, base_post_url: str, slide_idx: int) -> str 
                 break
         except Exception:
             break
+    print("    [단계] 캐러셀 이동 완료", flush=True)
 
-    img_src = await page.evaluate("""
-        () => {
-            const article = document.querySelector('article');
-            const scope = article || document;
-            const imgs = Array.from(scope.querySelectorAll('img'));
-            let best = null, bestSize = 0;
-            for (const img of imgs) {
-                const alt = (img.alt || '').toLowerCase();
-                const isAvatar = img.closest('header') ||
-                                 alt.includes('프로필 사진') || alt.includes('profile picture') ||
-                                 (img.closest('a[href*="/p/"]') === null && img.width < 60);
-                if (isAvatar) continue;
-                const w = img.naturalWidth || img.clientWidth || 0;
-                const h = img.naturalHeight || img.clientHeight || 0;
-                if (w > 200 && h > 200 && w * h > bestSize) {
-                    bestSize = w * h;
-                    best = img.src || img.currentSrc;
+    try:
+        img_src = await asyncio.wait_for(page.evaluate("""
+            () => {
+                const article = document.querySelector('article');
+                const scope = article || document;
+                const imgs = Array.from(scope.querySelectorAll('img'));
+                let best = null, bestSize = 0;
+                for (const img of imgs) {
+                    const alt = (img.alt || '').toLowerCase();
+                    const isAvatar = img.closest('header') ||
+                                     alt.includes('프로필 사진') || alt.includes('profile picture') ||
+                                     (img.closest('a[href*="/p/"]') === null && img.width < 60);
+                    if (isAvatar) continue;
+                    const w = img.naturalWidth || img.clientWidth || 0;
+                    const h = img.naturalHeight || img.clientHeight || 0;
+                    if (w > 200 && h > 200 && w * h > bestSize) {
+                        bestSize = w * h;
+                        best = img.src || img.currentSrc;
+                    }
                 }
+                return best;
             }
-            return best;
-        }
-    """)
+        """), timeout=15)
+    except asyncio.TimeoutError:
+        print("    [단계] evaluate 타임아웃(15초)", flush=True)
+        return None
+    print(f"    [단계] evaluate 완료: {img_src}", flush=True)
     return img_src
 
 
