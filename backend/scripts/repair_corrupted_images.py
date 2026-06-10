@@ -215,11 +215,14 @@ async def main():
             viewport={"width": 1280, "height": 800},
         )
 
-        login_page = await context.new_page()
-        await Stealth().apply_stealth_async(login_page)
         session_loaded = await load_session(context)
-        logged_in = await login(login_page, ig_username, ig_password)
-        await login_page.close()
+        if session_loaded:
+            logged_in = True
+        else:
+            login_page = await context.new_page()
+            await Stealth().apply_stealth_async(login_page)
+            logged_in = await login(login_page, ig_username, ig_password)
+            await login_page.close()
         if not logged_in:
             print("[복구 실패] 인스타그램 로그인 실패", flush=True)
             await browser.close()
