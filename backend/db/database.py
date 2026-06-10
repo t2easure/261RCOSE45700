@@ -129,6 +129,7 @@ def init_db() -> None:
                 ("trend_clusters", "TEXT"),
                 ("engagement_top", "TEXT"),
                 ("lead_signals", "TEXT"),
+                ("attribute_trends", "TEXT"),
             ]:
                 cur.execute(f"""
                     ALTER TABLE fashion_reports ADD COLUMN IF NOT EXISTS {col} {coltype}
@@ -842,6 +843,7 @@ def save_fashion_report(
     trend_clusters: list = None,
     engagement_top: list = None,
     lead_signals: list = None,
+    attribute_trends: dict = None,
 ) -> int:
     """리포트 저장. 저장된 id 반환."""
     from datetime import datetime, timezone, timedelta
@@ -858,8 +860,8 @@ def save_fashion_report(
                 """
                 INSERT INTO fashion_reports
                     (period_start, period_end, summary, top_keywords, style_trends,
-                     post_count, trend_clusters, engagement_top, lead_signals)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                     post_count, trend_clusters, engagement_top, lead_signals, attribute_trends)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
                 """,
                 (
@@ -870,6 +872,7 @@ def save_fashion_report(
                     json.dumps(trend_clusters, ensure_ascii=False) if trend_clusters else None,
                     json.dumps(engagement_top, ensure_ascii=False) if engagement_top else None,
                     json.dumps(lead_signals, ensure_ascii=False) if lead_signals else None,
+                    json.dumps(attribute_trends, ensure_ascii=False) if attribute_trends else None,
                 ),
             )
             report_id = cur.fetchone()[0]

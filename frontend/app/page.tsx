@@ -95,6 +95,7 @@ interface LeadSignal {
   first_brand_at?: string
   first_brand?: string
   representative_image: string
+  representative_id?: number
 }
 
 interface FashionReport {
@@ -134,6 +135,7 @@ export default function Home() {
   const [imageCaption, setImageCaption] = useState<string | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   const [imageSearchLoading, setImageSearchLoading] = useState(false)
+  const [imageSearchText, setImageSearchText] = useState('')
 
   // 검색 필터
   const [searchDays, setSearchDays] = useState(60)
@@ -297,13 +299,15 @@ export default function Home() {
   }, [searchSources, searchAccounts, searchDays])
 
 
-  async function handleImageSearch(files: File[]) {
+  async function handleImageSearch(files: File[], textQuery?: string) {
     setImageSearchLoading(true)
     setImagePreview(URL.createObjectURL(files[0]))
     setSearchQuery('')
     setTab('search')
+    const queryText = (textQuery ?? imageSearchText).trim()
     try {
       const formData = new FormData()
+      if (queryText) formData.append('q', queryText)
       if (files.length === 1) {
         formData.append('file', files[0])
         const res = await fetch('/api/search/image', { method: 'POST', body: formData })
@@ -319,7 +323,7 @@ export default function Home() {
         const res = await fetch('/api/search/images', { method: 'POST', body: formData })
         if (res.ok) {
           const data = await res.json()
-          setImageCaption(`이미지 ${data.image_count}장 기반 검색`)
+          setImageCaption(`이미지 ${data.image_count}장 기반 검색${queryText ? ` + "${queryText}"` : ''}`)
           const rawImg = data.results ?? []
           const maxSimImg = Math.max(...rawImg.map((r: SearchResult) => r.similarity), 1e-9)
           setSearchResults(rawImg.map((r: SearchResult) => ({ ...r, similarity: r.similarity / maxSimImg })))
@@ -494,6 +498,13 @@ export default function Home() {
               <span className="text-xs text-brown-300">또는 이미지로 검색</span>
               <div className="h-px flex-1 bg-brown-100" />
             </div>
+            <input
+              type="text"
+              value={imageSearchText}
+              onChange={e => setImageSearchText(e.target.value)}
+              placeholder="이미지와 함께 텍스트 조건 추가 (예: 더 캐주얼하게, 블랙 컬러로)"
+              className="w-full rounded-xl border border-brown-200 bg-white px-4 py-2.5 text-sm text-brown-800 placeholder-brown-300 outline-none transition focus:border-brown-500 focus:ring-2 focus:ring-brown-100"
+            />
             <label className={`flex cursor-pointer items-center justify-center gap-2 rounded-xl border-2 border-dashed border-brown-200 py-4 text-sm text-brown-400 transition hover:border-brown-400 hover:text-brown-600 ${imageSearchLoading ? 'opacity-50 pointer-events-none' : ''}`}>
               <input
                 type="file"
@@ -502,7 +513,7 @@ export default function Home() {
                 className="hidden"
                 onChange={e => { if (e.target.files && e.target.files.length > 0) handleImageSearch(Array.from(e.target.files)) }}
               />
-              {imageSearchLoading ? '이미지 분석 중...' : '📷 이미지 업로드 (여러 장 가능)'}
+              {imageSearchLoading ? '이미지 분석 중...' : '📷 이미지 업로드 (여러 장 가능, 텍스트 조합 가능)'}
             </label>
           </div>
 
@@ -609,7 +620,7 @@ export default function Home() {
                   <p className="text-xs font-medium text-brown-500">업로드한 이미지 분석 결과</p>
                   {imageCaption && <p className="text-sm text-brown-700 leading-6">{imageCaption}</p>}
                   <p className="text-xs text-brown-400">{searchResults.length}개 유사 이미지</p>
-                  <button onClick={() => { setImagePreview(null); setImageCaption(null); setSearchResults([]) }} className="text-xs text-brown-300 hover:text-brown-500">초기화</button>
+                  <button onClick={() => { setImagePreview(null); setImageCaption(null); setSearchResults([]); setImageSearchText('') }} className="text-xs text-brown-300 hover:text-brown-500">초기화</button>
                 </div>
               </div>
               {imageSearchLoading ? (
@@ -942,8 +953,8 @@ export default function Home() {
                 if (!clusters.length) return null
                 return (
                   <div className="space-y-2">
-                    <h3 className="font-serif text-xl font-bold text-brown-700">Trend Radar</h3>
-                    <p className="text-xs text-brown-400">실제 수집된 이미지를 AI가 자동 분류한 이번 시즌 핵심 스타일 클러스터입니다. 데이터 기반 인사이트로 신뢰할 수 있는 트렌드를 확인하세요. 이미지를 클릭하면 확대해서 볼 수 있어요.</p>
+                    <h3 className="font-serif text-xl font-bold text-brown-700">Early Signal <span className="text-sm font-sans font-normal text-brown-400">— 선행 지표</span></h3>
+                    <p className="text-xs text-brown-400">지금 가장 핫한 트렌드가 아니라, 앞으로 뜰 가능성이 높은 트렌드를 브랜드보다 먼저 포착합니다. AI가 자동 분류한 스타일 클러스터를 게시물 수·참여율·브랜드 진입 여부·선행 일수로 점수화했습니다. 이미지를 클릭하면 원본 게시물로 이동합니다.</p>
                     <div className="rounded-xl bg-brown-50 px-3 py-2.5 text-[11px] text-brown-400 space-y-1.5">
                       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                         <span className="font-medium text-brown-600">★ 트렌드 지수 (0~10점)</span>
@@ -1168,7 +1179,7 @@ export default function Home() {
                               src={s.representative_image}
                               className="h-36 w-28 object-cover shrink-0 cursor-pointer hover:opacity-80 transition-opacity"
                               title={s.trend_name}
-                              onClick={() => setLightbox({ url: s.representative_image, caption: `${s.trend_name} — @${s.first_influencer}` })}
+                              onClick={() => handleReportImageClick(s.representative_id, s.representative_image, `${s.trend_name} — @${s.first_influencer}`)}
                               onError={e => (e.currentTarget.style.display='none')}
                             />
                           )}

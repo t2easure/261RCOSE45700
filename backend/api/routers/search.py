@@ -1,7 +1,7 @@
 import os
 import base64
 import anthropic
-from fastapi import APIRouter, Query, UploadFile, File
+from fastapi import APIRouter, Query, UploadFile, File, Form
 from typing import List
 
 from db.database import search_fashion_posts, get_fashion_accounts
@@ -41,7 +41,7 @@ def expand_query(q: str) -> tuple[str, list[str]]:
 
 
 @router.post("/image")
-async def search_by_image(file: UploadFile = File(...)):
+async def search_by_image(file: UploadFile = File(...), q: str = Form(None)):
     content = await file.read()
     media_type = file.content_type or "image/jpeg"
     b64 = base64.b64encode(content).decode("utf-8")
@@ -58,7 +58,8 @@ async def search_by_image(file: UploadFile = File(...)):
     )
     caption = res.content[0].text.strip()
 
-    # CLIP 이미지 임베딩으로 검색
+    # CLIP 이미지 임베딩 + AI 캡션 임베딩(기존 방식) + 텍스트 쿼리(선택) 가중 결합
+    text_query = (q or "").strip()
     try:
         from PIL import Image
         import io
@@ -70,14 +71,37 @@ async def search_by_image(file: UploadFile = File(...)):
         with torch.no_grad():
             emb = model.get_image_features(**inputs)
             emb = emb / emb.norm(dim=-1, keepdim=True)
-        query_embedding = emb[0].tolist()
+        img_emb = emb[0]
+
+        caption_emb_list = get_query_embedding(caption)
+        caption_emb = torch.tensor(caption_emb_list, dtype=img_emb.dtype) if caption_emb_list else None
+
+        if text_query:
+            text_emb_list = get_query_embedding(text_query)
+            text_emb = torch.tensor(text_emb_list, dtype=img_emb.dtype) if text_emb_list else None
+            if caption_emb is not None and text_emb is not None:
+                combined = 0.5 * img_emb + 0.25 * caption_emb + 0.25 * text_emb
+            elif text_emb is not None:
+                combined = 0.6 * img_emb + 0.4 * text_emb
+            elif caption_emb is not None:
+                combined = 0.6 * img_emb + 0.4 * caption_emb
+            else:
+                combined = img_emb
+        elif caption_emb is not None:
+            combined = 0.6 * img_emb + 0.4 * caption_emb
+        else:
+            combined = img_emb
+
+        combined = combined / combined.norm()
+        query_embedding = combined.tolist()
     except Exception:
-        query_embedding = get_query_embedding(caption)
+        query_embedding = get_query_embedding(f"{caption} {text_query}".strip())
 
     results = search_fashion_posts(query_embedding, days=0, limit=50)
 
     return {
         "caption": caption,
+        "text_query": text_query or None,
         "total": len(results),
         "results": [
             {
@@ -95,8 +119,8 @@ async def search_by_image(file: UploadFile = File(...)):
 
 
 @router.post("/images")
-async def search_by_multiple_images(files: List[UploadFile] = File(...)):
-    """여러 이미지의 CLIP 임베딩 평균으로 유사 이미지 검색."""
+async def search_by_multiple_images(files: List[UploadFile] = File(...), q: str = Form(None)):
+    """여러 이미지의 CLIP 임베딩 평균(+텍스트 가중 결합)으로 유사 이미지 검색."""
     from PIL import Image
     import io
     import torch
@@ -122,12 +146,25 @@ async def search_by_multiple_images(files: List[UploadFile] = File(...)):
 
     avg_emb = torch.stack(embeddings).mean(dim=0)
     avg_emb = avg_emb / avg_emb.norm()
-    query_embedding = avg_emb.tolist()
+
+    text_query = (q or "").strip()
+    if text_query:
+        text_emb_list = get_query_embedding(text_query)
+        if text_emb_list:
+            text_emb = torch.tensor(text_emb_list, dtype=avg_emb.dtype)
+            combined = 0.6 * avg_emb + 0.4 * text_emb
+            combined = combined / combined.norm()
+            query_embedding = combined.tolist()
+        else:
+            query_embedding = avg_emb.tolist()
+    else:
+        query_embedding = avg_emb.tolist()
 
     results = search_fashion_posts(query_embedding, days=0, limit=50)
 
     return {
         "image_count": len(embeddings),
+        "text_query": text_query or None,
         "total": len(results),
         "results": [
             {

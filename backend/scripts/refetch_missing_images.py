@@ -10,6 +10,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
+sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 from db.database import _get_connection
 from utils.image_downloader import download_image
@@ -69,12 +70,17 @@ async def try_rescrape_playwright(post: dict) -> str | None:
             await page.goto(post["post_url"], timeout=15000)
             await page.wait_for_timeout(3000)
 
-            # 인스타 포스트 이미지 셀렉터
-            img = await page.query_selector('article img[src*="cdninstagram"], article img[src*="fbcdn"]')
-            if not img:
-                img = await page.query_selector('img[src*="cdninstagram"], img[src*="fbcdn"]')
-
-            src = await img.get_attribute("src") if img else None
+            # 인스타 포스트 본문 이미지: naturalWidth가 가장 큰 이미지를 선택 (프로필 사진 제외)
+            # 로그인 월에서는 <article> 태그가 없을 수 있으므로 article 한정하지 않음
+            src = await page.evaluate("""
+                () => {
+                    const imgs = Array.from(document.querySelectorAll('img'))
+                        .filter(img => /cdninstagram|fbcdn/.test(img.src));
+                    if (imgs.length === 0) return null;
+                    imgs.sort((a, b) => (b.naturalWidth * b.naturalHeight) - (a.naturalWidth * a.naturalHeight));
+                    return imgs[0].src;
+                }
+            """)
             await browser.close()
             return src
     except Exception as e:

@@ -54,6 +54,7 @@ class CRAIState(TypedDict):
     summary: str
     top_keywords: list[str]
     style_trends: list[dict]     # 기존 호환용
+    attribute_trends: dict       # 속성별 트렌드 (스타일/실루엣/컬러/소재/아이템/디테일)
     validation_passed: bool
     report_id: Optional[int]
     error_messages: list[str]
@@ -237,12 +238,42 @@ def _trend_agent(posts: list[dict], client: anthropic.Anthropic) -> dict:
     trend_names = [c["trend_name"] for c in clusters]
     sum_res = client.messages.create(
         model="claude-haiku-4-5-20251001",
-        max_tokens=300,
-        messages=[{"role": "user", "content": f"다음 패션 트렌드들을 MD 관점에서 2~3문장으로 요약해줘. 마크다운 기호(#, **, * 등) 없이 일반 텍스트로만 작성해줘: {', '.join(trend_names)}"}]
+        max_tokens=400,
+        messages=[{"role": "user", "content": (
+            f"다음 패션 트렌드들을 MD(머천다이저) 관점에서 분석해줘: {', '.join(trend_names)}\n\n"
+            "한 줄에 한 가지 인사이트씩, 4~5개의 짧은 문장으로 작성해줘. "
+            "각 문장은 1줄 개행으로 구분하고, 번호나 마크다운 기호(#, *, -, 1) 등) 없이 평문으로만 작성해줘. "
+            "각 문장은 완결된 한 문장으로, 트렌드명/공통 컬러·소재/MD 시사점 등 서로 다른 관점을 다뤄줘."
+        )}]
     )
     summary = sum_res.content[0].text.strip()
 
     return {"clusters": clusters, "summary": summary, "top_keywords": trend_names}
+
+
+# ── Attribute Trends Agent (속성별 트렌드) ───────────────────────────────────
+
+ATTRIBUTE_KEYS = ["스타일", "실루엣", "컬러", "소재", "아이템", "디테일"]
+
+
+def _attribute_trends_agent(posts: list[dict]) -> dict:
+    counts: dict = {key: {} for key in ATTRIBUTE_KEYS}
+    for p in posts:
+        cap = p.get("caption_ai") or ""
+        for key in ATTRIBUTE_KEYS:
+            m = re.search(rf"\[{key}\]\s*(.+)", cap)
+            if not m:
+                continue
+            line = m.group(1).split("\n")[0]
+            for item in line.split(","):
+                item = item.strip().strip(".")
+                if item:
+                    counts[key][item] = counts[key].get(item, 0) + 1
+
+    result = {key: sorted(c.items(), key=lambda x: -x[1])[:5] for key, c in counts.items()}
+    total = sum(len(v) for v in result.values())
+    print(f"✅ [AttributeTrendsAgent] {total}개 키워드 집계")
+    return result
 
 
 # ── Engagement Agent (3페이지) ───────────────────────────────────────────────
@@ -307,6 +338,7 @@ def _lead_index_agent(posts: list[dict], trend_clusters: list[dict]) -> list[dic
                 "first_influencer_at": str(first_influencer["posted_at"]),
                 "first_influencer": first_influencer["account_name"],
                 "representative_image": first_influencer["image_url"],
+                "representative_id": first_influencer["id"],
             })
         else:
             first_brand = min(brand_posts, key=lambda p: p["posted_at"])
@@ -321,6 +353,7 @@ def _lead_index_agent(posts: list[dict], trend_clusters: list[dict]) -> list[dic
                     "first_brand_at": str(first_brand["posted_at"]),
                     "first_brand": first_brand["account_name"],
                     "representative_image": first_influencer["image_url"],
+                    "representative_id": first_influencer["id"],
                 })
 
     signals.sort(key=lambda x: x.get("days_ahead") or 9999, reverse=True)
@@ -362,6 +395,7 @@ def orchestrator_node(state: CRAIState) -> CRAIState:
 
     trend_clusters = trend_result["clusters"]
     lead_signals = _lead_index_agent(posts, trend_clusters)
+    attribute_trends = _attribute_trends_agent(posts)
 
     # signal_strength 계산
     def _calc_signal(cluster, signals):
@@ -400,6 +434,7 @@ def orchestrator_node(state: CRAIState) -> CRAIState:
         "trend_clusters": trend_clusters,
         "engagement_top": engagement_result or [],
         "lead_signals": lead_signals,
+        "attribute_trends": attribute_trends,
         "summary": trend_result["summary"],
         "top_keywords": trend_result["top_keywords"],
         "style_trends": style_trends,
@@ -444,6 +479,7 @@ def save_node(state: CRAIState) -> CRAIState:
         trend_clusters=state["trend_clusters"],
         engagement_top=state["engagement_top"],
         lead_signals=state["lead_signals"],
+        attribute_trends=state.get("attribute_trends"),
     )
     print(f"✨ [Save] 완료 (ID: {report_id})")
     return {**state, "report_id": report_id}
@@ -484,6 +520,7 @@ def run_multi_agent_pipeline(days: int = 30, start_date: str = None, end_date: s
         "summary": "",
         "top_keywords": [],
         "style_trends": [],
+        "attribute_trends": {},
         "validation_passed": False,
         "report_id": None,
         "error_messages": [],

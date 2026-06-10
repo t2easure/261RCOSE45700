@@ -237,6 +237,53 @@ async def fetch_product_detail(context, product_url: str) -> dict:
     return result
 
 
+NEXT_BTN_SELECTORS = [
+    # H&M
+    '[data-elid="pagination-next-page-button"]',
+    'button:has-text("다음 페이지 보기")',
+
+    # 무신사, 스파오, 탑텐 등에서 자주 쓰이는 페이징 형태
+    'a.next', 'a.btn_next', 'a.page-next', 'a.paging_next',
+    'button.next', '.pagination-next', '.page-next',
+
+    # 화살표 이미지를 버튼으로 쓰는 경우 (한국 쇼핑몰 단골 패턴)
+    'a:has(img[alt*="다음"])', 'a:has(img[alt*="next"])',
+    '[aria-label="Next"]', '[title="Next"]', 'a[href*="page="] img[src*="next"]',
+    '.pagination a.next', '.paging-btn.btn.next',
+    '[class*="Pagination"] button:last-child',
+    'a.fa-angle-right',
+
+    # 텍스트 형태
+    'a:has-text(">")', 'button:has-text("더보기")', 'a:has-text("더보기")',
+
+    # 스파오 전용 다음 버튼 선택자
+    'a:has(img[src*="btn_page_next"])',
+    'a:has(img[src*="next"])',
+]
+
+
+async def try_click_next_page(page) -> bool:
+    """다음 페이지/더보기 버튼을 찾아 클릭. 클릭 성공 시 True."""
+    for selector in NEXT_BTN_SELECTORS:
+        try:
+            next_btn = page.locator(selector).first
+            # 버튼이 화면에 보이고, 비활성화(disabled) 상태가 아닐 때 클릭
+            if await next_btn.is_visible(timeout=1000) and not await next_btn.is_disabled():
+                await next_btn.click()
+
+                # 네트워크 통신이 어느 정도 잠잠해질 때까지 대기 (페이지 이동 로딩 대기)
+                try:
+                    await page.wait_for_load_state("networkidle", timeout=10000)
+                except Exception:
+                    pass  # 타임아웃 나도 스크립트 멈추지 않고 계속 진행
+
+                await asyncio.sleep(3)  # 추가 안전 대기
+                return True
+        except Exception:
+            continue  # 이 선택자가 아니면 다음 선택자로 넘어감
+    return False
+
+
 async def scrape_brand(brand: str, url: str) -> list[dict]:
     brand_key = get_brand_key(brand)
     now = datetime.now(timezone.utc)
@@ -247,7 +294,7 @@ async def scrape_brand(brand: str, url: str) -> list[dict]:
         import os
         force_headless = os.environ.get("HEADLESS", "true").lower() != "false"
         headless = True if force_headless else (brand_key not in ("hm", "zara"))
-        browser = await p.chromium.launch(headless=True)
+        browser = await p.chromium.launch(headless=headless)
         context = await browser.new_context(
             user_agent=(
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -356,6 +403,7 @@ async def scrape_brand(brand: str, url: str) -> list[dict]:
                         }
                     """)
                     print(f"[{brand}] listing_cards 원본: {len(hm_cards)}개")
+                    new_count = 0
                     for card in hm_cards[:50]:
                         img_url = card.get("img")
                         product_url = card.get("href") or url
@@ -368,6 +416,7 @@ async def scrape_brand(brand: str, url: str) -> list[dict]:
                         if norm in existing_urls or norm in seen_urls_global:
                             continue
                         seen_urls_global.add(norm)
+                        new_count += 1
                         local_url = await asyncio.get_event_loop().run_in_executor(None, download_image, norm, brand)
                         posts.append({
                             "source": "lookbook",
@@ -380,8 +429,23 @@ async def scrape_brand(brand: str, url: str) -> list[dict]:
                             "price": price,
                             "material_info": None,
                         })
-                    print(f"[{brand}] 리스팅 수집: {len(posts)}개")
-                    break
+                    print(f"[{brand}] {current_page} 페이지: 신규 {new_count}개 (누적: {len(posts)}개)")
+
+                    # 이미 수집된(중복) 데이터만 나오면 더 이상 새 페이지를 봐도 의미 없으므로 중단
+                    if new_count == 0 and current_page > 1:
+                        print(f"[{brand}] 신규 데이터 없음(중복) → 중단")
+                        break
+
+                    if current_page >= max_pages:
+                        print(f"[{brand}] 설정한 최대 페이지({max_pages})에 도달했습니다.")
+                        break
+
+                    if not await try_click_next_page(page):
+                        print(f"[{brand}] 더 이상 '다음' 버튼을 찾을 수 없습니다. (마지막 페이지)")
+                        break
+
+                    current_page += 1
+                    continue
 
                 # 2. 상품 상세 URL 수집 (리스팅 페이지에서 href만 추출)
                 all_hrefs: list[str] = await page.evaluate("""
@@ -470,54 +534,7 @@ async def scrape_brand(brand: str, url: str) -> list[dict]:
                     print(f"[{brand}] 설정한 최대 페이지({max_pages})에 도달했습니다.")
                     break
 
-                next_btn_selectors = [
-                    # H&M
-                    '[data-elid="pagination-next-page-button"]',
-                    'button:has-text("다음 페이지 보기")',
-
-                    # 무신사, 스파오, 탑텐 등에서 자주 쓰이는 페이징 형태
-                    'a.next', 'a.btn_next', 'a.page-next', 'a.paging_next',
-                    'button.next', '.pagination-next', '.page-next',
-
-                    # 화살표 이미지를 버튼으로 쓰는 경우 (한국 쇼핑몰 단골 패턴)
-                    'a:has(img[alt*="다음"])', 'a:has(img[alt*="next"])',
-                    '[aria-label="Next"]', '[title="Next"]','a[href*="page="] img[src*="next"]',
-                    '.pagination a.next', '.paging-btn.btn.next',
-                    '[class*="Pagination"] button:last-child',
-                    'a.fa-angle-right',
-
-                    # 텍스트 형태
-                    'a:has-text(">")', 'button:has-text("더보기")', 'a:has-text("더보기")'
-
-                    'a:has-text("더보기")',
-
-                    # 스파오 전용 다음 버튼 선택자
-                    'a:has(img[src*="btn_page_next"])',
-                    'a:has(img[src*="next"])'
-                ]
-
-                clicked = False
-                for selector in next_btn_selectors:
-                    try:
-                        next_btn = page.locator(selector).first
-                        # 버튼이 화면에 보이고, 비활성화(disabled) 상태가 아닐 때 클릭
-                        if await next_btn.is_visible(timeout=1000) and not await next_btn.is_disabled():
-                            await next_btn.click()
-
-                            # 네트워크 통신이 어느 정도 잠잠해질 때까지 대기 (페이지 이동 로딩 대기)
-                            try:
-                                await page.wait_for_load_state("networkidle", timeout=10000)
-                            except:
-                                pass # 타임아웃 나도 스크립트 멈추지 않고 계속 진행
-
-                            await asyncio.sleep(3) # 추가 안전 대기
-                            clicked = True
-                            break
-                    except Exception:
-                        continue # 이 선택자가 아니면 다음 선택자로 넘어감
-
-                # 어떤 버튼으로도 클릭하지 못했다면 마지막 페이지로 간주하고 종료
-                if not clicked:
+                if not await try_click_next_page(page):
                     print(f"[{brand}] 더 이상 '다음' 버튼을 찾을 수 없습니다. (마지막 페이지)")
                     break
 
@@ -547,7 +564,14 @@ async def run_brand_scraper(_status_callback=None) -> int:
         print(f"[Brand] 수집 시작: {brand}")
         if _status_callback:
             _status_callback("running", f"브랜드 스크래핑 중: {brand}")
-        posts = await scrape_brand(brand, url)
+        try:
+            # 일부 사이트(예: 유니클로)는 봇 차단으로 페이지가 완전히 멈춰
+            # goto의 timeout이 적용되지 않을 수 있으므로 브랜드 단위로 상위 타임아웃을 둔다.
+            posts = await asyncio.wait_for(scrape_brand(brand, url), timeout=180)
+        except asyncio.TimeoutError:
+            print(f"[Brand] {brand}: 180초 초과로 건너뜀 (페이지 응답 없음)")
+            log_crawl(source="lookbook", game="fashion", status="error", error_msg="timeout (page unresponsive)")
+            posts = []
 
         if posts:
             saved = save_fashion_posts(posts)
