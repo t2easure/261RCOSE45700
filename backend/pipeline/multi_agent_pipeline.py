@@ -399,8 +399,9 @@ def orchestrator_node(state: CRAIState) -> CRAIState:
     lead_signals = _lead_index_agent(posts, trend_clusters)
     attribute_trends = _attribute_trends_agent(posts)
 
-    from pipeline.image_generator import generate_outfit_image
+    from pipeline.image_generator import generate_outfit_image, build_outfit_description
     attribute_trends["_generated_image"] = generate_outfit_image(attribute_trends)
+    attribute_trends["_generated_image_reason"] = build_outfit_description(attribute_trends)
 
     # signal_strength 계산
     def _calc_signal(cluster, signals):

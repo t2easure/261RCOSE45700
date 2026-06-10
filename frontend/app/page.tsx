@@ -1215,6 +1215,7 @@ export default function Home() {
                 const hasData = attrs.some(a => (attrData[a.key]?.length ?? 0) > 0)
                 if (!hasData) return null
                 const generatedImage = (attrData as unknown as Record<string, unknown>)['_generated_image'] as string | null | undefined
+                const generatedImageReason = (attrData as unknown as Record<string, unknown>)['_generated_image_reason'] as string | null | undefined
                 return (
                   <div className="space-y-2">
                     <h3 className="font-serif text-xl font-bold text-brown-700">속성별 트렌드</h3>
@@ -1231,7 +1232,9 @@ export default function Home() {
                             onError={e => (e.currentTarget.style.display='none')}
                           />
                           <div className="space-y-1 pt-1 border-t border-brown-100">
-                            <p className="text-[10px] text-brown-300">아래 1위 키워드 조합으로 생성됨</p>
+                            {generatedImageReason && (
+                              <p className="text-[10px] leading-relaxed text-brown-400">{generatedImageReason}</p>
+                            )}
                             <div className="flex flex-wrap gap-1">
                               {attrs.map(({ key, emoji }) => {
                                 const top = attrData[key]?.[0]

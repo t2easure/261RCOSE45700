@@ -24,17 +24,56 @@ ATTRIBUTE_LABELS = {
 }
 
 
+def _top(attribute_trends: dict, key: str) -> str | None:
+    items = attribute_trends.get(key) or []
+    return items[0][0] if items else None
+
+
 def _build_outfit_prompt(attribute_trends: dict) -> str:
-    parts = ["flat lay fashion outfit photo, no person, clothing items and accessories arranged neatly on a clean white background"]
+    style = _top(attribute_trends, "스타일")
+    silhouette = _top(attribute_trends, "실루엣")
+    color = _top(attribute_trends, "컬러")
+    fabric = _top(attribute_trends, "소재")
+    item = _top(attribute_trends, "아이템")
+    detail = _top(attribute_trends, "디테일")
 
-    for key, label in ATTRIBUTE_LABELS.items():
-        items = attribute_trends.get(key) or []
-        if items:
-            top_keyword = items[0][0]
-            parts.append(f"{label}: {top_keyword}")
+    parts = [
+        "flat lay fashion outfit photo, no person, top-down view",
+        "a complete coordinated outfit including a top, a bottom (pants or skirt), shoes, and a bag, all items fully visible and not cropped",
+    ]
+    if item:
+        parts.append(f"centerpiece item: {item}")
+    if style:
+        parts.append(f"overall style: {style}")
+    if silhouette:
+        parts.append(f"silhouette: {silhouette}")
+    if color:
+        parts.append(f"dominant color palette: {color}")
+    if fabric:
+        parts.append(f"fabric: {fabric}")
+    if detail:
+        parts.append(f"detail accent: {detail}")
 
-    parts.append("product photography style, soft natural lighting, high quality, photorealistic")
+    parts.append("neatly arranged on a clean white background, product photography style, soft natural lighting, high quality, photorealistic")
     return ", ".join(p for p in parts if p)
+
+
+def build_outfit_basis(attribute_trends: dict) -> dict[str, str]:
+    """이미지 생성에 사용된 속성별 1위 키워드 (근거 표시용)."""
+    return {
+        key: top
+        for key in ATTRIBUTE_LABELS
+        if (top := _top(attribute_trends, key))
+    }
+
+
+def build_outfit_description(attribute_trends: dict) -> str:
+    """어떤 키워드 조합으로 이미지를 생성했는지 설명하는 한글 텍스트."""
+    basis = build_outfit_basis(attribute_trends)
+    if not basis:
+        return ""
+    parts = [f"{key} 1위 '{value}'" for key, value in basis.items()]
+    return "캡셔닝 데이터 기준 " + ", ".join(parts) + "를 조합해 AI가 예상 코디를 생성했습니다."
 
 
 def generate_outfit_image(attribute_trends: dict) -> str | None:
