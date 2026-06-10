@@ -1,6 +1,7 @@
 import json
 import os
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any
 
 import psycopg2
@@ -388,6 +389,14 @@ def _extract_color_keywords(keywords: list[str]) -> list[str]:
     return list(set(result))
 
 
+def _image_file_ok(image_url: str) -> bool:
+    """로컬에 저장된 이미지 파일이 정상(10KB 초과)인지 확인. 외부 URL이면 그대로 통과."""
+    if not image_url or not image_url.startswith("/images/"):
+        return True
+    path = Path(DATA_DIR) / image_url.lstrip("/")
+    return path.exists() and path.stat().st_size > 10000
+
+
 def search_fashion_posts(
     query_embedding: list[float],
     days: int = 60,
@@ -473,11 +482,18 @@ def search_fashion_posts(
             if any(c in combined for c in color_keys):
                 rrf_scores[doc_id] = rrf_scores.get(doc_id, 0) * 1.2
 
-    # 5. 최종 정렬 및 반환
-    sorted_ids = sorted(rrf_scores, key=lambda x: rrf_scores[x], reverse=True)[:limit]
+    # 5. 최종 정렬 - 에러 이미지 제외 및 동일 이미지 중복 제거
+    sorted_ids = sorted(rrf_scores, key=lambda x: rrf_scores[x], reverse=True)
     results = []
+    seen_images: set[str] = set()
     for doc_id in sorted_ids:
+        if len(results) >= limit:
+            break
         doc = all_docs[doc_id]
+        image_url = doc["image_url"]
+        if image_url in seen_images or not _image_file_ok(image_url):
+            continue
+        seen_images.add(image_url)
         doc["similarity"] = round(rrf_scores[doc_id], 6)
         results.append(doc)
 

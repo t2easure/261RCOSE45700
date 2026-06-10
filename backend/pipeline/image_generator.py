@@ -100,12 +100,36 @@ def build_outfit_basis(attribute_trends: dict) -> dict[str, str]:
 
 
 def build_outfit_description(attribute_trends: dict) -> str:
-    """어떤 키워드 조합으로 이미지를 생성했는지 설명하는 한글 텍스트."""
-    basis = build_outfit_basis(attribute_trends)
-    if not basis:
+    """이미지가 왜 이런 모습으로 생성됐는지 데이터 근거를 들어 설명하는 한글 텍스트."""
+    counts = {
+        key: attribute_trends.get(key, [])[0]
+        for key in ATTRIBUTE_LABELS
+        if attribute_trends.get(key)
+    }
+    if not counts:
         return ""
-    parts = [f"{key} 1위 '{value}'" for key, value in basis.items()]
-    return "캡셔닝 데이터 기준 " + ", ".join(parts) + "를 조합해 AI가 예상 코디를 생성했습니다."
+
+    facts = "\n".join(f"- {key}: '{name}' ({cnt}건, 1위)" for key, (name, cnt) in counts.items())
+
+    try:
+        client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
+        res = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=500,
+            messages=[{"role": "user", "content": (
+                "아래는 패션 캡셔닝 데이터에서 집계한 6대 속성별 1위 키워드와 빈도수다. "
+                "이 데이터를 바탕으로 AI가 '예상 코디 이미지'를 생성했다. "
+                "이미지 생성 시 컬러+디테일은 상의에, 아이템(센터피스)+실루엣+소재는 하의에, 스타일은 전체 무드에 반영했다. "
+                "이 근거(어떤 데이터가 왜 이미지의 어느 부분에 반영됐는지)를 한국어 3~4문장으로, "
+                "건수를 자연스럽게 인용하면서 설명해줘. 마크다운/번호 없이 평문으로만 작성.\n\n"
+                f"{facts}"
+            )}]
+        )
+        return res.content[0].text.strip()
+    except Exception as e:
+        print(f"[ImageGenerator] 코디 이미지 설명 생성 실패: {e}")
+        parts = [f"{key} 1위 '{name}'({cnt}건)" for key, (name, cnt) in counts.items()]
+        return "캡셔닝 데이터 기준 " + ", ".join(parts) + "를 조합해 AI가 예상 코디를 생성했습니다."
 
 
 def generate_outfit_image(attribute_trends: dict) -> str | None:
