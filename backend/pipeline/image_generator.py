@@ -69,7 +69,7 @@ def _build_outfit_prompt(attribute_trends: dict) -> str:
     # 상의: 컬러 + 디테일을 명시적으로 부여, 하의: 아이템(센터피스) + 실루엣 + 소재
     top_desc = f"a {color or ''} colored top".strip()
     if detail:
-        top_desc += f" with visible {detail}"
+        top_desc += f", prominently featuring large, clearly visible {detail} in a contrasting color so they stand out"
 
     bottom_desc = item or "pants"
     if silhouette:
