@@ -1233,7 +1233,7 @@ export default function Home() {
                           />
                           <div className="space-y-1 pt-1 border-t border-brown-100">
                             {generatedImageReason && (
-                              <p className="text-[10px] leading-relaxed text-brown-400">{generatedImageReason}</p>
+                              <p className="text-[10px] leading-relaxed text-brown-400 whitespace-pre-line">{generatedImageReason}</p>
                             )}
                             <div className="flex flex-wrap gap-1">
                               {attrs.map(({ key, emoji }) => {

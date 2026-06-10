@@ -100,36 +100,35 @@ def build_outfit_basis(attribute_trends: dict) -> dict[str, str]:
 
 
 def build_outfit_description(attribute_trends: dict) -> str:
-    """이미지가 왜 이런 모습으로 생성됐는지 데이터 근거를 들어 설명하는 한글 텍스트."""
-    counts = {
-        key: attribute_trends.get(key, [])[0]
-        for key in ATTRIBUTE_LABELS
-        if attribute_trends.get(key)
-    }
-    if not counts:
-        return ""
+    """이미지의 각 부분(상의/하의/전체 무드)이 어떤 데이터 근거로 만들어졌는지 불릿 텍스트로 설명."""
+    def _fmt(key: str) -> str | None:
+        items = attribute_trends.get(key) or []
+        if not items:
+            return None
+        name, cnt = items[0]
+        return f"{name}({cnt}건)"
 
-    facts = "\n".join(f"- {key}: '{name}' ({cnt}건, 1위)" for key, (name, cnt) in counts.items())
+    color = _fmt("컬러")
+    detail = _fmt("디테일")
+    item = _fmt("아이템")
+    silhouette = _fmt("실루엣")
+    fabric = _fmt("소재")
+    style = _fmt("스타일")
 
-    try:
-        client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
-        res = client.messages.create(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=500,
-            messages=[{"role": "user", "content": (
-                "아래는 패션 캡셔닝 데이터에서 집계한 6대 속성별 1위 키워드와 빈도수다. "
-                "이 데이터를 바탕으로 AI가 '예상 코디 이미지'를 생성했다. "
-                "이미지 생성 시 컬러+디테일은 상의에, 아이템(센터피스)+실루엣+소재는 하의에, 스타일은 전체 무드에 반영했다. "
-                "이 근거(어떤 데이터가 왜 이미지의 어느 부분에 반영됐는지)를 한국어 3~4문장으로, "
-                "건수를 자연스럽게 인용하면서 설명해줘. 마크다운/번호 없이 평문으로만 작성.\n\n"
-                f"{facts}"
-            )}]
-        )
-        return res.content[0].text.strip()
-    except Exception as e:
-        print(f"[ImageGenerator] 코디 이미지 설명 생성 실패: {e}")
-        parts = [f"{key} 1위 '{name}'({cnt}건)" for key, (name, cnt) in counts.items()]
-        return "캡셔닝 데이터 기준 " + ", ".join(parts) + "를 조합해 AI가 예상 코디를 생성했습니다."
+    bullets = []
+
+    top_parts = [p for p in [color, detail] if p]
+    if top_parts:
+        bullets.append(f"- 상의: {' + '.join(top_parts)} 반영")
+
+    bottom_parts = [p for p in [item, silhouette and f"{silhouette} 실루엣", fabric and f"{fabric} 소재"] if p]
+    if bottom_parts:
+        bullets.append(f"- 하의: {' + '.join(bottom_parts)} 반영")
+
+    if style:
+        bullets.append(f"- 전체 무드: {style} 스타일 반영")
+
+    return "\n".join(bullets)
 
 
 def generate_outfit_image(attribute_trends: dict) -> str | None:
