@@ -139,7 +139,7 @@ async def collect_account(page, username: str, cutoff: datetime, followers: int 
         empty_scrolls = 0
         max_empty_scrolls = 3
 
-        print(f" -> [스캔] {username} 피드 상단부터 역순 탐색하며 4월 14일 경계선 추적 시작...", flush=True)
+        print(f" -> [스캔] {username} 피드 상단부터 역순 탐색하며 {cutoff.month}월 {cutoff.day}일 경계선 추적 시작...", flush=True)
         while scroll_count < max_scrolls:
             anchors = await page.locator('a[href*="/p/"]').all()
             new_found = False
@@ -290,7 +290,7 @@ async def run_instagram_playwright(ig_username: str = None, ig_password: str = N
     ig_password = ig_password or "tjduswl123!"
 
     brands, influencers = load_accounts()
-    cutoff = datetime(2026, 4, 14, tzinfo=timezone.utc)
+    cutoff = datetime(2026, 6, 1, tzinfo=timezone.utc)
     total = 0
 
     async with async_playwright() as p:
@@ -342,7 +342,7 @@ async def run_instagram_playwright(ig_username: str = None, ig_password: str = N
                 # posted_at 오름차순 정렬 (옛날 날짜 -> 최신 날짜순)
                 posts.sort(key=lambda x: x["posted_at"])
                 
-                print(f"\n[정렬 완료] @{username} 수집본을 4월 14일부터 순차 정렬했습니다.", flush=True)
+                print(f"\n[정렬 완료] @{username} 수집본을 {cutoff.month}월 {cutoff.day}일부터 순차 정렬했습니다.", flush=True)
                 print(f"[순방향 저장] 4월->6월 데이터 로컬 저장 및 DB 업로드 시작...", flush=True)
                 
                 # 순서대로 정렬된 데이터를 로그에 찍어주기

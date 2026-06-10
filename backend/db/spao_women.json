@@ -1,0 +1,24 @@
+[
+  {
+    "source": "lookbook",
+    "account_name": "spao_women",
+    "post_url": "https://www.spao.com/i/item?itemNo=2606007635&lowerVendNo=LV26000002",
+    "image_url": "/images/spao_women/e34f8c57152d7f39113a467f2866fd43.jpg",
+    "caption": "",
+    "likes": null,
+    "posted_at": "2026-06-10T02:23:11.683833+00:00",
+    "price": 39900,
+    "material_info": null
+  },
+  {
+    "source": "lookbook",
+    "account_name": "spao_women",
+    "post_url": "https://www.spao.com/i/item?itemNo=2606006823&lowerVendNo=LV26000003",
+    "image_url": "/images/spao_women/704f7211160c71a408512461782f8617.jpg",
+    "caption": "",
+    "likes": null,
+    "posted_at": "2026-06-10T02:23:11.683833+00:00",
+    "price": 19900,
+    "material_info": null
+  }
+]

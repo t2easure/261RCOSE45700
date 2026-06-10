@@ -148,7 +148,14 @@ async def collect_account(page, username: str, cutoff: datetime, followers: int 
         
         print(f" -> [⚡1단계 고속 스캔] {username} 피드에서 대상 게시물 코드 수집 시작...", flush=True)
         while scroll_count < max_scrolls:
-            anchors = await page.locator('article a[href*="/p/"]').all()
+            try:
+                anchors = await asyncio.wait_for(
+                    page.locator('article a[href*="/p/"]').all(),
+                    timeout=15,
+                )
+            except asyncio.TimeoutError:
+                print(f" -> [⚡1단계] {username} 페이지 응답 없음(15초) → 스캔 중단, 지금까지 수집된 {len(target_shortcodes)}개로 진행", flush=True)
+                break
             for anchor in anchors:
                 href = await anchor.get_attribute('href')
                 if not href: continue
@@ -366,11 +373,19 @@ async def run_instagram_playwright(ig_username: str = None, ig_password: str = N
                         timeout=900,
                     )
                 except asyncio.TimeoutError:
-                    print(f"[Instagram] @{username} 처리 제한시간 초과", flush=True)
+                    print(f"[Instagram] @{username} 처리 제한시간(900초) 초과 → 건너뜀", flush=True)
+                    try:
+                        await user_page.screenshot(path=f"debug_timeout_{username}.png")
+                        print(f"[System] 타임아웃 화면 스크린샷 저장: debug_timeout_{username}.png", flush=True)
+                    except Exception:
+                        pass
                 except Exception as e:
                     print(f"[Instagram] @{username} 에러 발생: {e}", flush=True)
                 finally:
-                    await user_page.close()
+                    try:
+                        await asyncio.wait_for(user_page.close(), timeout=15)
+                    except Exception:
+                        pass
                 
                 if posts:
                     print(f"\n📦 RDS 데이터베이스 적재 및 고화질 이미지 다운로드 중...", flush=True)
