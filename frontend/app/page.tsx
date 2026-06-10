@@ -1225,7 +1225,7 @@ export default function Home() {
                           <p className="text-sm font-bold text-brown-700">✨ AI 예상 코디</p>
                           <img
                             src={generatedImage}
-                            className="w-full rounded-lg object-cover cursor-pointer hover:opacity-80 transition-opacity aspect-[3/4]"
+                            className="w-full rounded-lg object-cover cursor-pointer hover:opacity-80 transition-opacity aspect-square"
                             title="속성별 트렌드 기반 AI 예상 코디"
                             onClick={() => setLightbox({ url: generatedImage, caption: '속성별 트렌드 기반 AI 예상 코디' })}
                             onError={e => (e.currentTarget.style.display='none')}
