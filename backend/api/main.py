@@ -9,7 +9,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from datetime import datetime, timedelta
 
-from db.database import init_db, get_fashion_posts_all, get_fashion_stats, _get_connection
+from db.database import init_db, get_fashion_posts_all, get_fashion_stats, _get_connection, delete_post
 from api.routers import search, fashion_reports, pipeline, crawl, config_manager
 
 app = FastAPI(title="CRAI API")
@@ -133,6 +133,12 @@ def posts_by_ids(ids: str):
             )
             rows = cur.fetchall()
     return [{"id": r[0], "image_url": r[1], "account_name": r[2], "post_url": r[3]} for r in rows]
+
+
+@app.delete("/posts/{post_id}")
+def remove_post(post_id: int):
+    delete_post(post_id)
+    return {"deleted": post_id}
 
 
 @app.get("/posts/accounts")

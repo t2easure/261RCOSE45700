@@ -14,6 +14,7 @@ interface ImageCardProps {
   materialInfo?: string | null
   likes?: number | null
   followers?: number | null
+  onDelete?: () => void
 }
 
 const SOURCE_LABELS: Record<string, string> = {
@@ -33,6 +34,7 @@ export default function ImageCard({
   materialInfo,
   likes,
   followers,
+  onDelete,
 }: ImageCardProps) {
   const [imgError, setImgError] = useState(false)
   const dateStr = postedAt
@@ -60,6 +62,16 @@ export default function ImageCard({
         <span className="absolute left-2 top-2 rounded-full bg-white/80 px-2.5 py-1 text-[10px] font-medium text-brown-600 backdrop-blur-sm">
           {SOURCE_LABELS[source] ?? source}
         </span>
+        {onDelete && (
+          <button
+            type="button"
+            onClick={(e) => { e.preventDefault(); e.stopPropagation(); onDelete() }}
+            title="삭제"
+            className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full bg-black/50 text-xs text-white opacity-0 transition hover:bg-red-500 group-hover:opacity-100"
+          >
+            ✕
+          </button>
+        )}
       </div>
 
       <div className="space-y-1 p-3">

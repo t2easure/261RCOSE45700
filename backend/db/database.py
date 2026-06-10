@@ -1,6 +1,8 @@
+import hashlib
 import json
 import os
 from datetime import datetime, timedelta, timezone
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -395,21 +397,43 @@ _BAD_IMAGE_SIZES = {1678201, 59517}
 _BAD_IMAGE_HASHES = {"1702e3b9b2ff7bbba99dbda15cf87c5e", "2bdd2f0e67445de888f1cd49b9777c5b"}
 
 
+@lru_cache(maxsize=8192)
+def _image_content_hash(path_str: str, mtime: float) -> str | None:
+    try:
+        return hashlib.md5(Path(path_str).read_bytes()).hexdigest()
+    except OSError:
+        return None
+
+
+def _local_image_path(image_url: str) -> Path | None:
+    if not image_url or not image_url.startswith("/images/"):
+        return None
+    return Path(DATA_DIR) / image_url.lstrip("/")
+
+
 def _image_file_ok(image_url: str) -> bool:
     """로컬에 저장된 이미지 파일이 정상(10KB 초과, 알려진 오류 이미지 아님)인지 확인. 외부 URL이면 그대로 통과."""
-    if not image_url or not image_url.startswith("/images/"):
+    path = _local_image_path(image_url)
+    if path is None:
         return True
-    path = Path(DATA_DIR) / image_url.lstrip("/")
     if not path.exists():
         return False
     size = path.stat().st_size
     if size <= 10000:
         return False
     if size in _BAD_IMAGE_SIZES:
-        import hashlib
-        if hashlib.md5(path.read_bytes()).hexdigest() in _BAD_IMAGE_HASHES:
+        if _image_content_hash(str(path), path.stat().st_mtime) in _BAD_IMAGE_HASHES:
             return False
     return True
+
+
+def _image_dedup_key(image_url: str) -> str:
+    """동일 이미지를 다른 파일명으로 중복 저장한 경우를 잡기 위한 콘텐츠 기반 키."""
+    path = _local_image_path(image_url)
+    if path is None or not path.exists():
+        return image_url
+    h = _image_content_hash(str(path), path.stat().st_mtime)
+    return h or image_url
 
 
 def search_fashion_posts(
@@ -507,11 +531,14 @@ def search_fashion_posts(
         doc = all_docs[doc_id]
         image_url = doc["image_url"]
         caption = doc.get("caption_ai") or ""
-        if image_url in seen_images or not _image_file_ok(image_url):
+        if not _image_file_ok(image_url):
             continue
         if "패션 이미지가 아닙니다" in caption or "패션 사진이 아닙니다" in caption:
             continue
-        seen_images.add(image_url)
+        dedup_key = _image_dedup_key(image_url)
+        if dedup_key in seen_images:
+            continue
+        seen_images.add(dedup_key)
         doc["similarity"] = round(rrf_scores[doc_id], 6)
         results.append(doc)
 

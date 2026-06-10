@@ -202,10 +202,15 @@ async def collect_account(page, username: str, cutoff: datetime, followers: int 
                                     const imgs = Array.from(document.querySelectorAll('img'));
                                     let best = null, bestSize = 0;
                                     for (const img of imgs) {
+                                        // 프로필 사진 제외 (alt 텍스트 또는 헤더 영역)
+                                        const alt = (img.alt || '').toLowerCase();
+                                        const isAvatar = img.closest('header') ||
+                                                         alt.includes('프로필 사진') || alt.includes('profile picture');
+                                        if (isAvatar) continue;
                                         const w = img.naturalWidth || img.clientWidth || 0;
                                         const h = img.naturalHeight || img.clientHeight || 0;
                                         if (w > 200 && h > 200 && w * h > bestSize) {
-                                            bestSize = w * h; 
+                                            bestSize = w * h;
                                             best = img.src || img.currentSrc;
                                         }
                                     }

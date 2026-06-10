@@ -1249,7 +1249,7 @@ export default function Home() {
                     <p className="text-xs text-brown-400">캡셔닝 데이터 기반 6대 속성별 상위 키워드 빈도</p>
                     <div className="flex flex-col gap-3 lg:flex-row pt-1">
                       {generatedImage && (
-                        <div className="rounded-2xl bg-white p-3 shadow-sm space-y-2 lg:w-64 lg:flex-shrink-0">
+                        <div className="rounded-2xl bg-white p-3 shadow-sm space-y-2 lg:w-96 lg:flex-shrink-0">
                           <p className="text-sm font-bold text-brown-700">✨ AI 예상 코디</p>
                           <img
                             src={generatedImage}
@@ -1282,7 +1282,7 @@ export default function Home() {
                           if (!items.length) return null
                           const max = items[0]?.[1] ?? 1
                           return (
-                            <div key={key} className="rounded-2xl bg-white p-5 shadow-sm space-y-3">
+                            <div key={key} className="rounded-2xl bg-white p-3 shadow-sm space-y-2">
                               <p className="text-sm font-bold text-brown-700">{emoji} {key}</p>
                               <div className="space-y-2">
                                 {items.slice(0, 5).map(([name, cnt]) => (
@@ -1958,6 +1958,11 @@ export default function Home() {
                     materialInfo={p.material_info}
                     likes={p.likes}
                     followers={p.followers}
+                    onDelete={async () => {
+                      if (!confirm('이 이미지를 삭제하시겠습니까?')) return
+                      await fetch(`/api/posts/${p.id}`, { method: 'DELETE' })
+                      setAllPosts(prev => prev.filter(x => x.id !== p.id))
+                    }}
                   />
                 ))}
               </div>

@@ -218,9 +218,11 @@ async def collect_account(page, username: str, cutoff: datetime, followers: int 
                             const imgs = Array.from(scope.querySelectorAll('img'));
                             let best = null, bestSize = 0;
                             for (const img of imgs) {
-                                // 프로필 사진 제외 (헤더 영역 또는 작은 원형 이미지)
+                                // 프로필 사진 제외 (헤더 영역, alt 텍스트, 또는 작은 원형 이미지)
+                                const alt = (img.alt || '').toLowerCase();
                                 const isAvatar = img.closest('header') ||
-                                                 img.closest('a[href*="/p/"]') === null && img.width < 60;
+                                                 alt.includes('프로필 사진') || alt.includes('profile picture') ||
+                                                 (img.closest('a[href*="/p/"]') === null && img.width < 60);
                                 if (isAvatar) continue;
                                 const w = img.naturalWidth || img.clientWidth || 0;
                                 const h = img.naturalHeight || img.clientHeight || 0;
