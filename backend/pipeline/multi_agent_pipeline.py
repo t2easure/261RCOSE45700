@@ -218,7 +218,7 @@ def _trend_agent(posts: list[dict], client: anthropic.Anthropic) -> dict:
         brand_prices = [p["price"] for p in brand_posts if p.get("price") and p["price"] > 0]
         avg_price = round(np.mean(brand_prices)) if brand_prices else None
 
-        clusters.append({
+        cluster_info = {
             "trend_name": trend_name,
             "short_name": short_name,
             "description": cluster_description,
@@ -231,7 +231,9 @@ def _trend_agent(posts: list[dict], client: anthropic.Anthropic) -> dict:
             "representative_images": [p["image_url"] for p in representative],
             "top_influencers": top_influencers,
             "material_dist": material_dist,
-        })
+        }
+
+        clusters.append(cluster_info)
         print(f"✅ [TrendAgent] 클러스터 {i+1}: {trend_name} ({'🔥선행' if is_leading else '✅확산'})")
 
     # 전체 요약도 생성
@@ -396,6 +398,9 @@ def orchestrator_node(state: CRAIState) -> CRAIState:
     trend_clusters = trend_result["clusters"]
     lead_signals = _lead_index_agent(posts, trend_clusters)
     attribute_trends = _attribute_trends_agent(posts)
+
+    from pipeline.image_generator import generate_outfit_image
+    attribute_trends["_generated_image"] = generate_outfit_image(attribute_trends)
 
     # signal_strength 계산
     def _calc_signal(cluster, signals):

@@ -313,7 +313,7 @@ export default function Home() {
         const res = await fetch('/api/search/image', { method: 'POST', body: formData })
         if (res.ok) {
           const data = await res.json()
-          setImageCaption(data.caption ?? null)
+          setImageCaption(data.text_query ? `${data.caption}\n\n+ 추가 조건: "${data.text_query}"` : (data.caption ?? null))
           const rawImg = data.results ?? []
           const maxSimImg = Math.max(...rawImg.map((r: SearchResult) => r.similarity), 1e-9)
           setSearchResults(rawImg.map((r: SearchResult) => ({ ...r, similarity: r.similarity / maxSimImg })))
@@ -618,7 +618,7 @@ export default function Home() {
                 <img src={imagePreview} className="h-28 w-20 rounded-xl object-cover shrink-0" />
                 <div className="space-y-1">
                   <p className="text-xs font-medium text-brown-500">업로드한 이미지 분석 결과</p>
-                  {imageCaption && <p className="text-sm text-brown-700 leading-6">{imageCaption}</p>}
+                  {imageCaption && <p className="text-sm text-brown-700 leading-6 whitespace-pre-line">{imageCaption}</p>}
                   <p className="text-xs text-brown-400">{searchResults.length}개 유사 이미지</p>
                   <button onClick={() => { setImagePreview(null); setImageCaption(null); setSearchResults([]); setImageSearchText('') }} className="text-xs text-brown-300 hover:text-brown-500">초기화</button>
                 </div>
@@ -1214,34 +1214,63 @@ export default function Home() {
                 ]
                 const hasData = attrs.some(a => (attrData[a.key]?.length ?? 0) > 0)
                 if (!hasData) return null
+                const generatedImage = (attrData as unknown as Record<string, unknown>)['_generated_image'] as string | null | undefined
                 return (
                   <div className="space-y-2">
                     <h3 className="font-serif text-xl font-bold text-brown-700">속성별 트렌드</h3>
                     <p className="text-xs text-brown-400">캡셔닝 데이터 기반 6대 속성별 상위 키워드 빈도</p>
-                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 pt-1">
-                      {attrs.map(({ key, emoji }) => {
-                        const items = attrData[key] ?? []
-                        if (!items.length) return null
-                        const max = items[0]?.[1] ?? 1
-                        return (
-                          <div key={key} className="rounded-2xl bg-white p-5 shadow-sm space-y-3">
-                            <p className="text-sm font-bold text-brown-700">{emoji} {key}</p>
-                            <div className="space-y-2">
-                              {items.slice(0, 5).map(([name, cnt]) => (
-                                <div key={name}>
-                                  <div className="flex justify-between text-xs mb-0.5">
-                                    <span className="text-brown-700 font-medium">{name}</span>
-                                    <span className="text-brown-400">{cnt}</span>
-                                  </div>
-                                  <div className="h-1.5 rounded-full bg-brown-100">
-                                    <div className="h-full rounded-full bg-brown-400" style={{ width: `${(cnt / max) * 100}%` }} />
-                                  </div>
-                                </div>
-                              ))}
+                    <div className="flex flex-col gap-3 lg:flex-row pt-1">
+                      {generatedImage && (
+                        <div className="rounded-2xl bg-white p-3 shadow-sm space-y-2 lg:w-64 lg:flex-shrink-0">
+                          <p className="text-sm font-bold text-brown-700">✨ AI 예상 코디</p>
+                          <img
+                            src={generatedImage}
+                            className="w-full rounded-lg object-cover cursor-pointer hover:opacity-80 transition-opacity aspect-[3/4]"
+                            title="속성별 트렌드 기반 AI 예상 코디"
+                            onClick={() => setLightbox({ url: generatedImage, caption: '속성별 트렌드 기반 AI 예상 코디' })}
+                            onError={e => (e.currentTarget.style.display='none')}
+                          />
+                          <div className="space-y-1 pt-1 border-t border-brown-100">
+                            <p className="text-[10px] text-brown-300">아래 1위 키워드 조합으로 생성됨</p>
+                            <div className="flex flex-wrap gap-1">
+                              {attrs.map(({ key, emoji }) => {
+                                const top = attrData[key]?.[0]
+                                if (!top) return null
+                                return (
+                                  <span key={key} className="rounded-full bg-brown-50 px-2 py-0.5 text-[10px] text-brown-600">
+                                    {emoji} {top[0]}
+                                  </span>
+                                )
+                              })}
                             </div>
                           </div>
-                        )
-                      })}
+                        </div>
+                      )}
+                      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 flex-1">
+                        {attrs.map(({ key, emoji }) => {
+                          const items = attrData[key] ?? []
+                          if (!items.length) return null
+                          const max = items[0]?.[1] ?? 1
+                          return (
+                            <div key={key} className="rounded-2xl bg-white p-5 shadow-sm space-y-3">
+                              <p className="text-sm font-bold text-brown-700">{emoji} {key}</p>
+                              <div className="space-y-2">
+                                {items.slice(0, 5).map(([name, cnt]) => (
+                                  <div key={name}>
+                                    <div className="flex justify-between text-xs mb-0.5">
+                                      <span className="text-brown-700 font-medium">{name}</span>
+                                      <span className="text-brown-400">{cnt}</span>
+                                    </div>
+                                    <div className="h-1.5 rounded-full bg-brown-100">
+                                      <div className="h-full rounded-full bg-brown-400" style={{ width: `${(cnt / max) * 100}%` }} />
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
                     </div>
                   </div>
                 )
