@@ -3,9 +3,11 @@
 하나의 코디 예상 이미지를 생성 (Hugging Face Inference API, 무료 토큰 필요)
 """
 import hashlib
+import json
 import os
 from pathlib import Path
 
+import anthropic
 import httpx
 
 GEN_DIR = Path(__file__).parent.parent / "data" / "images" / "generated"
@@ -29,30 +31,60 @@ def _top(attribute_trends: dict, key: str) -> str | None:
     return items[0][0] if items else None
 
 
+def _translate_to_english(keywords: dict[str, str]) -> dict[str, str]:
+    """{한글 카테고리: 한글 키워드} -> {한글 카테고리: 영어 키워드} (이미지 프롬프트용)."""
+    if not keywords:
+        return {}
+    try:
+        client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
+        items_text = "\n".join(f"{k}: {v}" for k, v in keywords.items())
+        res = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=300,
+            messages=[{"role": "user", "content": (
+                "다음 패션 키워드들을 이미지 생성 프롬프트에 쓸 짧은 영어 표현으로 번역해줘. "
+                "JSON 객체로만 답해줘 (키는 그대로, 값만 영어로). 설명/마크다운 없이 JSON만 출력.\n\n"
+                f"{items_text}"
+            )}]
+        )
+        text = res.content[0].text.strip()
+        text = text.removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+        return json.loads(text)
+    except Exception as e:
+        print(f"[ImageGenerator] 키워드 번역 실패, 원문 사용: {e}")
+        return keywords
+
+
 def _build_outfit_prompt(attribute_trends: dict) -> str:
-    style = _top(attribute_trends, "스타일")
-    silhouette = _top(attribute_trends, "실루엣")
-    color = _top(attribute_trends, "컬러")
-    fabric = _top(attribute_trends, "소재")
-    item = _top(attribute_trends, "아이템")
-    detail = _top(attribute_trends, "디테일")
+    basis = build_outfit_basis(attribute_trends)
+    translated = _translate_to_english(basis)
+
+    style = translated.get("스타일")
+    silhouette = translated.get("실루엣")
+    color = translated.get("컬러")
+    fabric = translated.get("소재")
+    item = translated.get("아이템")
+    detail = translated.get("디테일")
+
+    # 상의: 컬러 + 디테일을 명시적으로 부여, 하의: 아이템(센터피스) + 실루엣 + 소재
+    top_desc = f"a {color or ''} colored top".strip()
+    if detail:
+        top_desc += f" with visible {detail}"
+
+    bottom_desc = item or "pants"
+    if silhouette:
+        bottom_desc = f"{silhouette} {bottom_desc}"
+    if fabric:
+        bottom_desc += f" in {fabric} fabric"
 
     parts = [
         "flat lay fashion outfit photo, no person, top-down view",
-        "a complete coordinated outfit including a top, a bottom (pants or skirt), shoes, and a bag, all items fully visible and not cropped",
+        f"a complete coordinated outfit: {top_desc}, paired with {bottom_desc}, plus matching shoes and a bag, all items fully visible and not cropped",
     ]
-    if item:
-        parts.append(f"centerpiece item: {item}")
-    if style:
-        parts.append(f"overall style: {style}")
-    if silhouette:
-        parts.append(f"silhouette: {silhouette}")
     if color:
-        parts.append(f"dominant color palette: {color}")
-    if fabric:
-        parts.append(f"fabric: {fabric}")
-    if detail:
-        parts.append(f"detail accent: {detail}")
+        parts.append(f"the {color} color is clearly the dominant color of the outfit")
+    if style:
+        parts.append(f"{style} style")
 
     parts.append("neatly arranged on a clean white background, product photography style, soft natural lighting, high quality, photorealistic")
     return ", ".join(p for p in parts if p)
