@@ -977,6 +977,36 @@ export default function Home() {
                         moderate:    { label: '관망', icon: '👀', cls: 'bg-blue-50 text-blue-400' },
                         weak:        { label: '미미함', icon: '💤', cls: 'bg-stone-100 text-stone-500' },
                       }
+                      type AxisKey = 'postCount' | 'engagement' | 'brandOpen' | 'leadDays' | 'price'
+                      const axisKeys: AxisKey[] = ['postCount', 'engagement', 'brandOpen', 'leadDays', 'price']
+                      const rawScores = clusters.map(c => {
+                        const brandRatio = c.brand_ratio ?? 0
+                        const hasBrandRatio = c.brand_ratio != null
+                        const priceScore = c.avg_price != null
+                          ? Math.max(0, Math.min(100, (100000 - c.avg_price) / 80000 * 100))
+                          : Math.min(100, (1 - brandRatio) * 100)
+                        const leadDays = c.signal_strength != null
+                          ? Math.max(0, Math.min(((c.signal_strength - Math.min(c.post_count/50*3,3) - Math.min(c.avg_engagement_rate/0.02*3,3) - (hasBrandRatio ? (1-brandRatio)*2 : 0)) / 2) * 100, 100))
+                          : 0
+                        return {
+                          postCount: Math.min((c.post_count / 50) * 100, 100),
+                          engagement: Math.min((c.avg_engagement_rate / 0.02) * 100, 100),
+                          brandOpen: Math.min((1 - brandRatio) * 100, 100),
+                          leadDays,
+                          price: priceScore,
+                        }
+                      })
+                      // 클러스터 간 상대 비교가 잘 보이도록 축별 min-max 정규화 (15~100 범위)
+                      const axisRanges = axisKeys.reduce((acc, key) => {
+                        const vals = rawScores.map(s => s[key])
+                        acc[key] = { min: Math.min(...vals), max: Math.max(...vals) }
+                        return acc
+                      }, {} as Record<AxisKey, { min: number; max: number }>)
+                      const normalize = (key: AxisKey, val: number) => {
+                        const { min, max } = axisRanges[key]
+                        if (max - min < 1) return 60
+                        return 15 + ((val - min) / (max - min)) * 85
+                      }
                       return (
                         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 pt-1">
                           {clusters.map((c, i) => {
@@ -989,16 +1019,12 @@ export default function Home() {
                               : c.signal_strength >= 3 ? 'moderate'
                               : 'weak'
                             const sig = sigLabel ? SIGNAL_META[sigLabel] : null
-                            const hasBrandRatio = c.brand_ratio != null
-                            const priceScore = c.avg_price != null
-                              ? Math.max(0, Math.min(100, (100000 - c.avg_price) / 80000 * 100))
-                              : Math.min(100, (1 - brandRatio) * 100)
                             const radarData = [
-                              { axis: '게시물 수', value: Math.min((c.post_count / 50) * 100, 100) },
-                              { axis: '인플 참여율', value: Math.min((c.avg_engagement_rate / 0.02) * 100, 100) },
-                              { axis: '브랜드 미진입', value: Math.min((1 - brandRatio) * 100, 100) },
-                              { axis: '선행 일수', value: c.signal_strength != null ? Math.max(0, Math.min(((c.signal_strength - Math.min(c.post_count/50*3,3) - Math.min(c.avg_engagement_rate/0.02*3,3) - (hasBrandRatio ? (1-brandRatio)*2 : 0)) / 2) * 100, 100)) : 0 },
-                              { axis: '가격 매력도', value: priceScore },
+                              { axis: '게시물 수', value: normalize('postCount', rawScores[i].postCount) },
+                              { axis: '인플 참여율', value: normalize('engagement', rawScores[i].engagement) },
+                              { axis: '브랜드 미진입', value: normalize('brandOpen', rawScores[i].brandOpen) },
+                              { axis: '선행 일수', value: normalize('leadDays', rawScores[i].leadDays) },
+                              { axis: '가격 매력도', value: normalize('price', rawScores[i].price) },
                             ]
                             return (
                               <div key={i} className="rounded-2xl bg-white p-4 shadow-sm space-y-3">
