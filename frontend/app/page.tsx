@@ -513,7 +513,7 @@ export default function Home() {
                 className="hidden"
                 onChange={e => { if (e.target.files && e.target.files.length > 0) handleImageSearch(Array.from(e.target.files)) }}
               />
-              {imageSearchLoading ? '이미지 분석 중...' : '📷 이미지 업로드 (여러 장 가능, 텍스트 조합 가능)'}
+              {imageSearchLoading ? '이미지 분석 중...' : '📷 이미지 업로드 (텍스트 조합 가능)'}
             </label>
           </div>
 
