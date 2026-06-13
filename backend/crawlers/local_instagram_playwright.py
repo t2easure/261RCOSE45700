@@ -17,6 +17,7 @@ from playwright_stealth import Stealth
 
 from db.database import save_fashion_posts, log_crawl, _get_connection
 from utils.image_downloader import download_images
+from utils.instagram_likes import fetch_likes_from_post_page
 
 ACCOUNTS_PATH = Path(__file__).parent.parent.parent / "config" / "instagram_accounts.json"
 SESSION_PATH = Path(__file__).parent.parent / "data" / "instagram_session.json"
@@ -230,24 +231,7 @@ async def collect_account(page, username: str, cutoff: datetime, followers: int 
                     except Exception:
                         pass
 
-                    likes = None
-                    try:
-                        article_text = await post_page.locator("main, article").first.inner_text(timeout=5000)
-                        like_patterns = [
-                            r"좋아요\s*([\d,]+)\s*개",
-                            r"([\d,]+)\s*명이\s*좋아합니다",
-                            r"([\d,]+)\s*likes",
-                            r"Liked by .* and ([\d,]+) others",
-                            r"and\s*([\d,]+)\s*others",
-                            r"외\s*([\d,]+)\s*명",
-                        ]
-                        for pat in like_patterns:
-                            m = re.search(pat, article_text)
-                            if m:
-                                likes = int(m.group(1).replace(",", ""))
-                                break
-                    except Exception:
-                        pass
+                    likes = await fetch_likes_from_post_page(post_page)
 
                     await post_page.close()
 

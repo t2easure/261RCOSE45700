@@ -18,6 +18,7 @@ from pyvirtualdisplay import Display  # 🚨 서버 전용 가상 디스플레�
 
 from db.database import save_fashion_posts, log_crawl, _get_connection
 from utils.image_downloader import download_images
+from utils.instagram_likes import fetch_likes_from_post_page
 
 ACCOUNTS_PATH = Path(__file__).parent.parent.parent / "config" / "instagram_accounts.json"
 SESSION_PATH = Path(__file__).parent.parent / "data" / "instagram_session.json"
@@ -246,42 +247,7 @@ async def collect_account(page, username: str, cutoff: datetime, followers: int 
                     else:
                         break
 
-                likes = None
-                try:
-                    # 좋아요 수 전용 셀렉터로 추출 (aria-label 오염 방지)
-                    like_selectors = [
-                        'section span[class*="like"]',
-                        'a[href*="liked_by"] span',
-                        'span[class*="_aacl"]:has-text("좋아요")',
-                    ]
-                    for sel in like_selectors:
-                        try:
-                            el = post_page.locator(sel).first
-                            if await el.is_visible(timeout=800):
-                                txt = await el.inner_text(timeout=800)
-                                m = re.search(r"([\d,]+)", txt.replace(",", ""))
-                                if m:
-                                    likes = int(m.group(1).replace(",", ""))
-                                    break
-                        except Exception:
-                            continue
-
-                    # 셀렉터 실패 시 section 영역 텍스트에서 재시도
-                    if likes is None:
-                        section_text = await post_page.locator("section").last.inner_text(timeout=3000)
-                        like_patterns = [
-                            r"좋아요\s*([\d,]+)\s*개",
-                            r"([\d,]+)\s*명이\s*좋아합니다",
-                            r"외\s*([\d,]+)\s*명",
-                            r"([\d,]+)\s*likes",
-                            r"and\s*([\d,]+)\s*others",
-                        ]
-                        for pat in like_patterns:
-                            m = re.search(pat, section_text)
-                            if m:
-                                likes = int(m.group(1).replace(",", ""))
-                                break
-                except Exception: pass
+                likes = await fetch_likes_from_post_page(post_page)
 
                 await post_page.close()
 
