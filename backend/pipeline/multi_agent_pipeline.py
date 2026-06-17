@@ -75,7 +75,7 @@ def scout_agent(state: CRAIState) -> CRAIState:
         date_filter = "" if days == 0 else f"AND collected_at >= NOW() - ('{days} days')::interval"
 
     sql = f"""
-        SELECT id, account_name, source, image_url, caption_ai,
+        SELECT id, account_name, source, image_url, post_url, caption_ai,
                likes, comments, followers, posted_at,
                embedding::text
         FROM fashion_posts
@@ -102,7 +102,26 @@ def scout_agent(state: CRAIState) -> CRAIState:
             p["embedding"] = np.array(json.loads(raw), dtype=np.float32)
         posts.append(p)
 
-    print(f"🔍 [Scout] {len(posts)}개 포스트 로딩 완료")
+    # 캐러셀 슬라이드(post_url?img=N)는 같은 게시물의 다른 사진일 뿐인데,
+    # 클러스터링 시 개별 데이터포인트로 들어가면 같은 outfit이 여러 트렌드
+    # 클러스터로 쪼개져 중복 노출됨 → 게시물(base post_url)당 대표 슬라이드 1개만 유지
+    def _slide_num(url: str) -> int:
+        if "?img=" not in url:
+            return 0
+        try:
+            return int(url.split("?img=")[-1])
+        except ValueError:
+            return 0
+
+    best_by_base: dict[str, dict] = {}
+    for p in posts:
+        base_url = (p.get("post_url") or p["id"]).split("?img=")[0] if p.get("post_url") else str(p["id"])
+        cur_best = best_by_base.get(base_url)
+        if cur_best is None or _slide_num(p.get("post_url") or "") < _slide_num(cur_best.get("post_url") or ""):
+            best_by_base[base_url] = p
+    posts = list(best_by_base.values())
+
+    print(f"🔍 [Scout] {len(posts)}개 포스트 로딩 완료 (캐러셀 슬라이드 dedup 적용)")
     return {**state, "posts": posts}
 
 
@@ -136,8 +155,11 @@ def _trend_agent(posts: list[dict], client: anthropic.Anthropic) -> dict:
         has_brand = any(p["account_name"] in brands for p in cluster_posts)
         is_leading = not has_brand  # 인플루언서만 있으면 선행 트렌드
 
-        # 캡션 샘플로 트렌드명 생성
-        sample_captions = "\n".join([p["caption_ai"] for p in cluster_posts[:10] if p.get("caption_ai")])
+        # 캡션 샘플로 트렌드명 생성 — 대표 이미지(중심점에 가장 가까운 포스트)와
+        # 동일한 포스트의 캡션을 사용해야 이름과 사진이 일치함
+        rep_captions = [p["caption_ai"] for p in representative if p.get("caption_ai")]
+        other_captions = [p["caption_ai"] for p in cluster_posts if p.get("caption_ai") and p not in representative]
+        sample_captions = "\n".join(rep_captions + other_captions[:7])
         name_res = client.messages.create(
             model="claude-haiku-4-5-20251001",
             max_tokens=30,
@@ -289,11 +311,25 @@ def _engagement_agent(posts: list[dict]) -> list[dict]:
         rate = ((p.get("likes") or 0) + (p.get("comments") or 0)) / followers
         scored.append({**p, "engagement_rate": round(rate, 4)})
 
-    top10 = sorted(scored, key=lambda x: x["engagement_rate"], reverse=True)[:10]
+    scored.sort(key=lambda x: x["engagement_rate"], reverse=True)
+
+    # 캐러셀 슬라이드(post_url?img=N)는 likes/comments/followers가 동일해
+    # 같은 게시물이 Top N을 중복 차지함 → base post_url 기준으로 하나만 선정
+    seen_base_urls = set()
+    top10 = []
+    for p in scored:
+        base_url = (p.get("post_url") or "").split("?img=")[0]
+        if base_url in seen_base_urls:
+            continue
+        seen_base_urls.add(base_url)
+        top10.append(p)
+        if len(top10) >= 10:
+            break
     result = [{
         "id": p["id"],
         "account_name": p["account_name"],
         "image_url": p["image_url"],
+        "post_url": p.get("post_url"),
         "caption_ai": p["caption_ai"],
         "posted_at": str(p["posted_at"]) if p.get("posted_at") else None,
         "likes": p.get("likes", 0),

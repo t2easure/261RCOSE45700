@@ -279,7 +279,7 @@ async def run_instagram_playwright(ig_username: str = None, ig_password: str = N
     ig_password = ig_password or "tjduswl123!"
 
     brands, influencers = load_accounts()
-    cutoff = datetime(2026, 6, 1, tzinfo=timezone.utc)
+    cutoff = datetime(2026, 6, 13, tzinfo=timezone.utc)
     total = 0
 
     async with async_playwright() as p:

@@ -38,13 +38,16 @@ function periodLabel(r: FashionReport, mode: 'weekly' | 'monthly') {
   return r.period_start ? `${r.period_start.slice(5, 10)}` : r.created_at.slice(5, 10)
 }
 
+// signal_strength 이론상 최대 10점이지만, post_count>=50·engagement>=2% 같은 조건이
+// 동시에 충족돼야 8점대가 나와 실제로는 거의 도달하지 않음. 실측 분포(대략 1~5.5)에 맞춰
+// 고정 threshold를 재조정 (시계열 비교가 가능하도록 절대값 유지)
 function cellColor(value: number | null): string {
   if (value === null) return 'bg-brown-50 text-transparent'
-  if (value >= 8) return 'bg-orange-400 text-white'
-  if (value >= 6) return 'bg-orange-200 text-orange-800'
-  if (value >= 4) return 'bg-yellow-200 text-yellow-800'
-  if (value >= 2) return 'bg-green-100 text-green-700'
-  return 'bg-stone-100 text-stone-400'
+  if (value >= 5.5) return 'bg-orange-400 text-white'    // 강한 신호
+  if (value >= 4.3) return 'bg-orange-200 text-orange-800' // 성장
+  if (value >= 3.2) return 'bg-yellow-200 text-yellow-800' // 포화 진입
+  if (value >= 1.5) return 'bg-green-100 text-green-700'
+  return 'bg-stone-100 text-stone-400' // 약함
 }
 
 function linearSlope(values: number[]): number {
@@ -118,10 +121,10 @@ export default function KeywordHeatmap({ reports, mode, onCellClick }: Props) {
         />
         <span className="text-xs font-semibold text-brown-600 w-6">{topN}</span>
         <span className="ml-auto flex gap-3 text-[11px] text-brown-400">
-          <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded-sm bg-orange-400"/>≥8 급상승</span>
-          <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded-sm bg-orange-200"/>≥6</span>
-          <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded-sm bg-yellow-200"/>≥4</span>
-          <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded-sm bg-green-100"/>≥2</span>
+          <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded-sm bg-orange-400"/>≥5.5 강한 신호</span>
+          <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded-sm bg-orange-200"/>≥4.3</span>
+          <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded-sm bg-yellow-200"/>≥3.2</span>
+          <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded-sm bg-green-100"/>≥1.5</span>
           <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded-sm bg-stone-100 border border-stone-200"/>미진입</span>
         </span>
       </div>
