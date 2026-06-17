@@ -144,12 +144,11 @@ export default function KeywordHeatmap({ reports, mode, onCellClick }: Props) {
           <tbody>
             {keywords.map((kw, ki) => {
               const slope = slopes[kw]
-              const total = matrix[kw].length
               const appeared = matrix[kw].filter(v => v !== null).length
-              const appearRate = total > 0 ? appeared / total : 0
-              const isSparse = appearRate < 0.3
-              const isRising = !isSparse && slope > 0.5
-              const isFalling = !isSparse && slope < -0.5
+              // 등장 횟수 기준 판단: 기울기는 데이터 포인트 2개 이상이어야 의미 있음
+              const isNew = appeared <= 1
+              const isRising = !isNew && slope > 0.5
+              const isFalling = !isNew && slope < -0.5
               return (
                 <tr key={kw} className={ki % 2 === 0 ? 'bg-cream-50/40' : 'bg-white'}>
                   <td className="sticky left-0 px-4 py-1.5 font-medium text-brown-700 border-r border-brown-100 max-w-[140px] truncate" style={{ background: ki % 2 === 0 ? 'rgb(253,251,247,0.4)' : 'white' }}>
@@ -181,8 +180,8 @@ export default function KeywordHeatmap({ reports, mode, onCellClick }: Props) {
                       </span>
                     ) : isFalling ? (
                       <span className="text-[10px] text-stone-400">↘ 하강</span>
-                    ) : isSparse ? (
-                      <span className="text-[10px] text-stone-300">— 단발</span>
+                    ) : isNew ? (
+                      <span className="text-[10px] text-stone-300">🆕 신규</span>
                     ) : (
                       <span className="text-[10px] text-brown-300">→ 유지</span>
                     )}
