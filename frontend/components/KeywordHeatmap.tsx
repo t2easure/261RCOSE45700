@@ -135,7 +135,7 @@ export default function KeywordHeatmap({ reports, mode, onCellClick }: Props) {
               {periods.map((p, i) => (
                 <th key={i} className="px-1 py-2.5 text-center text-[10px] font-medium text-brown-400 border-b border-brown-100 whitespace-nowrap min-w-[52px]">{p}</th>
               ))}
-              <th className="px-3 py-2.5 text-center text-[10px] font-medium text-brown-400 border-b border-brown-100 min-w-[60px]">추세</th>
+              <th className="px-3 py-2.5 text-center text-[10px] font-medium text-brown-400 border-b border-brown-100 min-w-[72px] whitespace-nowrap">추세</th>
             </tr>
           </thead>
           <tbody>
@@ -171,17 +171,17 @@ export default function KeywordHeatmap({ reports, mode, onCellClick }: Props) {
                       </td>
                     )
                   })}
-                  <td className="px-3 py-1.5 text-center">
+                  <td className="px-3 py-1.5 text-center whitespace-nowrap">
                     {isRising ? (
-                      <span className="inline-flex items-center gap-0.5 rounded-full bg-orange-50 px-2 py-0.5 text-[10px] font-semibold text-orange-600">
+                      <span className="inline-flex items-center gap-0.5 rounded-full bg-orange-50 px-2 py-0.5 text-[10px] font-semibold text-orange-600 whitespace-nowrap">
                         🔥 급상승
                       </span>
                     ) : isFalling ? (
-                      <span className="text-[10px] text-stone-400">↘ 하강</span>
+                      <span className="text-[10px] text-stone-400 whitespace-nowrap">↘ 하강</span>
                     ) : isSparse ? (
-                      <span className="text-[10px] text-stone-300">— 단발</span>
+                      <span className="text-[10px] text-stone-300 whitespace-nowrap">— 단발</span>
                     ) : (
-                      <span className="text-[10px] text-brown-300">→ 유지</span>
+                      <span className="text-[10px] text-brown-300 whitespace-nowrap">→ 유지</span>
                     )}
                   </td>
                 </tr>
