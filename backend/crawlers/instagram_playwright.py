@@ -121,11 +121,9 @@ async def collect_account(page, username: str, cutoff: datetime, followers: int 
         print(f" -> [추적] {username} 인스타 페이지 접속 성공!", flush=True)
         await asyncio.sleep(3)
 
-        # 🚨 [Xvfb 전용 디버깅 가드] 세션 튕기면 원인 분석용 스크린샷 찰칵 박아버리기
+        # 🚨 [Xvfb 전용 디버깅 가드] 세션 튕기면 수집 중단
         if "login" in page.url or "accounts" in page.url:
             print(f"[Instagram] 세션 만료 감지 ({page.url}) → 수집 중단", flush=True)
-            await page.screenshot(path=f"debug_banned_{username}.png")
-            print(f"[System] 차단 화면 스크린샷 저장 완료: debug_banned_{username}.png", flush=True)
             return final_posts
 
         try:

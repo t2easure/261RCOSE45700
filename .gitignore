@@ -10,6 +10,7 @@ dist/
 logs/*.log
 .streamlit/
 debug_output.txt
+debug_banned_*.png
 data/last_run.json
 ku-hys-01-key.pem
 *.pem
@@ -24,3 +25,4 @@ ec2.md
 .DS_Store
 build/
 coverage/
+backend/tieusian_freaky
