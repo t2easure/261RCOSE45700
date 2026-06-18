@@ -57,7 +57,9 @@ def embed_text(text: str) -> list[float] | None:
     try:
         import torch
         model, processor = get_model()
-        inputs = processor(text=[text[:77]], return_tensors="pt", truncation=True)
+        # CLIP의 77 토큰 제한은 글자 수가 아니라 토큰 수 기준이라, 글자 단위로 자르면
+        # 문장 뒷부분(예: 컬러 같은 핵심 속성)이 토큰화 전에 통째로 잘려나갈 수 있음.
+        inputs = processor(text=[text], return_tensors="pt", truncation=True, max_length=77)
         with torch.no_grad():
             emb = model.get_text_features(**inputs)
             if not isinstance(emb, torch.Tensor):

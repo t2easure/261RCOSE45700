@@ -136,6 +136,7 @@ export default function Home() {
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   const [imageSearchLoading, setImageSearchLoading] = useState(false)
   const [imageSearchText, setImageSearchText] = useState('')
+  const [pendingImageFiles, setPendingImageFiles] = useState<File[] | null>(null)
 
   // 검색 필터
   const [searchDays, setSearchDays] = useState(60)
@@ -505,16 +506,33 @@ export default function Home() {
               placeholder="이미지와 함께 텍스트 조건 추가 (예: 더 캐주얼하게, 블랙 컬러로)"
               className="w-full rounded-xl border border-brown-200 bg-white px-4 py-2.5 text-sm text-brown-800 placeholder-brown-300 outline-none transition focus:border-brown-500 focus:ring-2 focus:ring-brown-100"
             />
-            <label className={`flex cursor-pointer items-center justify-center gap-2 rounded-xl border-2 border-dashed border-brown-200 py-4 text-sm text-brown-400 transition hover:border-brown-400 hover:text-brown-600 ${imageSearchLoading ? 'opacity-50 pointer-events-none' : ''}`}>
-              <input
-                type="file"
-                accept="image/*"
-                multiple
-                className="hidden"
-                onChange={e => { if (e.target.files && e.target.files.length > 0) handleImageSearch(Array.from(e.target.files)) }}
-              />
-              {imageSearchLoading ? '이미지 분석 중...' : '📷 이미지 업로드 (텍스트 조합 가능)'}
-            </label>
+            <div className="flex gap-2">
+              <label className={`flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl border-2 border-dashed border-brown-200 py-4 text-sm text-brown-400 transition hover:border-brown-400 hover:text-brown-600 ${imageSearchLoading ? 'opacity-50 pointer-events-none' : ''}`}>
+                <input
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  className="hidden"
+                  onChange={e => {
+                    if (e.target.files && e.target.files.length > 0) {
+                      const files = Array.from(e.target.files)
+                      setPendingImageFiles(files)
+                      setImagePreview(URL.createObjectURL(files[0]))
+                    }
+                  }}
+                />
+                {pendingImageFiles
+                  ? `📷 ${pendingImageFiles.length}장 선택됨 (다시 선택 가능)`
+                  : '📷 이미지 업로드 (텍스트 조합 가능)'}
+              </label>
+              <button
+                onClick={() => pendingImageFiles && handleImageSearch(pendingImageFiles)}
+                disabled={!pendingImageFiles || imageSearchLoading}
+                className="shrink-0 rounded-xl bg-brown-700 px-6 py-4 text-sm font-semibold text-white transition hover:bg-brown-800 disabled:opacity-40"
+              >
+                {imageSearchLoading ? '검색 중...' : '검색'}
+              </button>
+            </div>
           </div>
 
           {/* 필터 패널 */}
