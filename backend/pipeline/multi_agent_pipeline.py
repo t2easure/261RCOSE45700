@@ -144,10 +144,29 @@ def _trend_agent(posts: list[dict], client: anthropic.Anthropic) -> dict:
 
     # 직전 리포트의 클러스터와 중심점 코사인 유사도가 높으면 같은 트렌드로 보고
     # 이름을 새로 생성하지 않고 재사용 (매주 LLM이 이름을 다르게 지어 히트맵에서
-    # 같은 트렌드가 다른 키워드로 쪼개지는 문제 방지)
+    # 같은 트렌드가 다른 키워드로 쪼개지는 문제 방지).
+    # 단, 이전 클러스터 하나가 이번 주 클러스터 여러 개에 동시에 매칭되면 같은
+    # 리포트 안에서 트렌드명이 중복되므로, 유사도 내림차순으로 그리디 1:1 매칭한다.
     from db.database import get_latest_trend_clusters
     prev_clusters = [c for c in get_latest_trend_clusters() if c.get("center")]
     SIMILARITY_THRESHOLD = 0.85
+
+    match_for_cluster: dict[int, dict] = {}
+    if prev_clusters:
+        pairs = []
+        for ci in range(k):
+            for pj, pc in enumerate(prev_clusters):
+                sim = float(np.dot(centers_norm[ci], np.array(pc["center"])))
+                if sim >= SIMILARITY_THRESHOLD:
+                    pairs.append((sim, ci, pj))
+        pairs.sort(key=lambda x: x[0], reverse=True)
+        used_curr, used_prev = set(), set()
+        for sim, ci, pj in pairs:
+            if ci in used_curr or pj in used_prev:
+                continue
+            used_curr.add(ci)
+            used_prev.add(pj)
+            match_for_cluster[ci] = prev_clusters[pj]
 
     clusters = []
     for i in range(k):
@@ -169,13 +188,8 @@ def _trend_agent(posts: list[dict], client: anthropic.Anthropic) -> dict:
         other_captions = [p["caption_ai"] for p in cluster_posts if p.get("caption_ai") and p not in representative]
         sample_captions = "\n".join(rep_captions + other_captions[:7])
 
-        # 직전 리포트의 트렌드와 중심점이 유사하면 같은 트렌드로 간주, 이름 재사용
-        matched_prev = None
-        if prev_clusters:
-            sims = [float(np.dot(centers_norm[i], np.array(c["center"]))) for c in prev_clusters]
-            best_idx = int(np.argmax(sims))
-            if sims[best_idx] >= SIMILARITY_THRESHOLD:
-                matched_prev = prev_clusters[best_idx]
+        # 직전 리포트의 트렌드와 중심점이 유사하면 같은 트렌드로 간주, 이름 재사용 (1:1 매칭)
+        matched_prev = match_for_cluster.get(i)
 
         if matched_prev:
             trend_name = matched_prev["trend_name"]
