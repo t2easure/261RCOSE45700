@@ -151,7 +151,7 @@ export default function KeywordHeatmap({ reports, mode, onCellClick }: Props) {
               const isFalling = !isNew && slope < -0.5
               return (
                 <tr key={kw} className={ki % 2 === 0 ? 'bg-cream-50/40' : 'bg-white'}>
-                  <td className="sticky left-0 px-4 py-1.5 font-medium text-brown-700 border-r border-brown-100 max-w-[140px] truncate" style={{ background: ki % 2 === 0 ? 'rgb(253,251,247,0.4)' : 'white' }}>
+                  <td className="sticky left-0 px-4 py-1.5 font-medium text-brown-700 border-r border-brown-100 min-w-[140px] whitespace-nowrap" style={{ background: ki % 2 === 0 ? 'rgb(253,251,247,0.4)' : 'white' }}>
                     {kw}
                     {isRising && <span className="ml-1 text-orange-500 font-bold">↑</span>}
                     {isFalling && <span className="ml-1 text-stone-400">↓</span>}

@@ -893,6 +893,20 @@ def save_caption_meta(post_id: int, meta: str) -> None:
         conn.commit()
 
 
+def get_latest_trend_clusters() -> list[dict]:
+    """가장 최근 리포트의 trend_clusters 반환 (트렌드명 연속성 매칭용)."""
+    with _get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT trend_clusters FROM fashion_reports WHERE trend_clusters IS NOT NULL ORDER BY created_at DESC LIMIT 1"
+            )
+            row = cur.fetchone()
+    if not row or not row[0]:
+        return []
+    data = row[0]
+    return json.loads(data) if isinstance(data, str) else data
+
+
 def save_fashion_report(
     summary: str,
     top_keywords: list,

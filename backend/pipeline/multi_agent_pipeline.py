@@ -140,6 +140,14 @@ def _trend_agent(posts: list[dict], client: anthropic.Anthropic) -> dict:
     km = KMeans(n_clusters=k, random_state=42, n_init=10)
     labels = km.fit_predict(embeddings)
     centers = km.cluster_centers_
+    centers_norm = centers / np.linalg.norm(centers, axis=1, keepdims=True)
+
+    # 직전 리포트의 클러스터와 중심점 코사인 유사도가 높으면 같은 트렌드로 보고
+    # 이름을 새로 생성하지 않고 재사용 (매주 LLM이 이름을 다르게 지어 히트맵에서
+    # 같은 트렌드가 다른 키워드로 쪼개지는 문제 방지)
+    from db.database import get_latest_trend_clusters
+    prev_clusters = [c for c in get_latest_trend_clusters() if c.get("center")]
+    SIMILARITY_THRESHOLD = 0.85
 
     clusters = []
     for i in range(k):
@@ -160,33 +168,54 @@ def _trend_agent(posts: list[dict], client: anthropic.Anthropic) -> dict:
         rep_captions = [p["caption_ai"] for p in representative if p.get("caption_ai")]
         other_captions = [p["caption_ai"] for p in cluster_posts if p.get("caption_ai") and p not in representative]
         sample_captions = "\n".join(rep_captions + other_captions[:7])
-        name_res = client.messages.create(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=30,
-            messages=[{"role": "user", "content": (
-                f"아래 패션 이미지 설명들의 공통 스타일을 한국어 명사형 3~5단어로만 답해. 예시: '빈티지 데님 캐주얼', '시크 오피스 룩', '러블리 플로럴 원피스'. 단어만 출력, 설명 금지. 모든 트렌드명이 같은 단어로 시작하지 않도록 해:\n{sample_captions[:600]}"
-            )}]
-        )
-        desc_res = client.messages.create(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=150,
-            messages=[{"role": "user", "content": (
-                f"아래 패션 이미지 설명들의 공통 스타일을 MD(머천다이저) 관점에서 2문장으로 설명해. 마크다운 없이 평문으로, 50자 이내로 간결하게:\n{sample_captions[:600]}"
-            )}]
-        )
-        raw_name = name_res.content[0].text.strip().split("\n")[0].lstrip("#1234567890. ").strip()
-        BAD_PREFIXES = ("죄송", "제공", "패션", "공통", "MD", "아래", "다음", "분석", "스타일명", "이름")
-        trend_name = raw_name[:30] if raw_name and len(raw_name) < 30 and not any(raw_name.startswith(p) for p in BAD_PREFIXES) else f"트렌드 {i+1}"
-        short_res = client.messages.create(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=20,
-            messages=[{"role": "user", "content": (
-                f"'{trend_name}' 트렌드를 1~2단어 한국어 키워드로 압축해. 예시: '오버사이즈', '미니멀 캐주얼'. 단어만 출력:"
-            )}]
-        )
-        raw_short = short_res.content[0].text.strip().split("\n")[0].strip()
-        short_name = raw_short[:10] if raw_short and len(raw_short) <= 10 and not any(raw_short.startswith(p) for p in BAD_PREFIXES) else None
-        cluster_description = re.sub(r'[\*\#\_\-]+', '', desc_res.content[0].text.strip()).strip()
+
+        # 직전 리포트의 트렌드와 중심점이 유사하면 같은 트렌드로 간주, 이름 재사용
+        matched_prev = None
+        if prev_clusters:
+            sims = [float(np.dot(centers_norm[i], np.array(c["center"]))) for c in prev_clusters]
+            best_idx = int(np.argmax(sims))
+            if sims[best_idx] >= SIMILARITY_THRESHOLD:
+                matched_prev = prev_clusters[best_idx]
+
+        if matched_prev:
+            trend_name = matched_prev["trend_name"]
+            short_name = matched_prev.get("short_name")
+            desc_res = client.messages.create(
+                model="claude-haiku-4-5-20251001",
+                max_tokens=150,
+                messages=[{"role": "user", "content": (
+                    f"아래 패션 이미지 설명들의 공통 스타일을 MD(머천다이저) 관점에서 2문장으로 설명해. 마크다운 없이 평문으로, 50자 이내로 간결하게:\n{sample_captions[:600]}"
+                )}]
+            )
+            cluster_description = re.sub(r'[\*\#\_\-]+', '', desc_res.content[0].text.strip()).strip()
+        else:
+            name_res = client.messages.create(
+                model="claude-haiku-4-5-20251001",
+                max_tokens=30,
+                messages=[{"role": "user", "content": (
+                    f"아래 패션 이미지 설명들의 공통 스타일을 한국어 명사형 3~5단어로만 답해. 예시: '빈티지 데님 캐주얼', '시크 오피스 룩', '러블리 플로럴 원피스'. 단어만 출력, 설명 금지. 모든 트렌드명이 같은 단어로 시작하지 않도록 해:\n{sample_captions[:600]}"
+                )}]
+            )
+            desc_res = client.messages.create(
+                model="claude-haiku-4-5-20251001",
+                max_tokens=150,
+                messages=[{"role": "user", "content": (
+                    f"아래 패션 이미지 설명들의 공통 스타일을 MD(머천다이저) 관점에서 2문장으로 설명해. 마크다운 없이 평문으로, 50자 이내로 간결하게:\n{sample_captions[:600]}"
+                )}]
+            )
+            raw_name = name_res.content[0].text.strip().split("\n")[0].lstrip("#1234567890. ").strip()
+            BAD_PREFIXES = ("죄송", "제공", "패션", "공통", "MD", "아래", "다음", "분석", "스타일명", "이름")
+            trend_name = raw_name[:30] if raw_name and len(raw_name) < 30 and not any(raw_name.startswith(p) for p in BAD_PREFIXES) else f"트렌드 {i+1}"
+            short_res = client.messages.create(
+                model="claude-haiku-4-5-20251001",
+                max_tokens=20,
+                messages=[{"role": "user", "content": (
+                    f"'{trend_name}' 트렌드를 1~2단어 한국어 키워드로 압축해. 예시: '오버사이즈', '미니멀 캐주얼'. 단어만 출력:"
+                )}]
+            )
+            raw_short = short_res.content[0].text.strip().split("\n")[0].strip()
+            short_name = raw_short[:10] if raw_short and len(raw_short) <= 10 and not any(raw_short.startswith(p) for p in BAD_PREFIXES) else None
+            cluster_description = re.sub(r'[\*\#\_\-]+', '', desc_res.content[0].text.strip()).strip()
 
         influencer_posts = [p for p in cluster_posts if p["account_name"] not in brands and (p.get("followers") or 0) >= 100]
         brand_posts = [p for p in cluster_posts if p["account_name"] in brands or p.get("source") == "lookbook"]
@@ -243,6 +272,7 @@ def _trend_agent(posts: list[dict], client: anthropic.Anthropic) -> dict:
         cluster_info = {
             "trend_name": trend_name,
             "short_name": short_name,
+            "center": centers_norm[i].tolist(),
             "description": cluster_description,
             "post_count": len(cluster_posts),
             "is_leading": is_leading,
